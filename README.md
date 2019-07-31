@@ -1,7 +1,7 @@
 # Event Representation Learning
 
-This is repository contains learning code that implements 
-event representation learning as is described in the Gehrig et al. ICCV'19.
+This repository contains learning code that implements 
+event representation learning as described in Gehrig et al. ICCV'19.
 
 If you use this code in an academic context, please cite the following work:
 
