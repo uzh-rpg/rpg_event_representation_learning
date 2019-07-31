@@ -174,7 +174,7 @@ if __name__ == '__main__':
         print(f"Training Iteration {iteration:5d}  Loss {training_loss:.4f}  Accuracy {training_accuracy:.4f}")
 
         writer.add_scalar("training/accuracy", training_accuracy, iteration)
-        writer.add_scalar("training/loss", training_accuracy, iteration)
+        writer.add_scalar("training/loss", training_loss, iteration)
 
         representation_vizualization = create_image(representation)
         writer.add_image("training/representation", representation_vizualization, iteration)
