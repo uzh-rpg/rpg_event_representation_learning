@@ -144,7 +144,7 @@ if __name__ == '__main__':
                 "state_dict": state_dict,
                 "min_val_loss": min_validation_loss,
                 "iteration": iteration
-            }, "log/checkpoint_%5d_%.4f.pth" % (iteration, min_validation_loss))
+            }, "log/checkpoint_%05d_%.4f.pth" % (iteration, min_validation_loss))
 
         sum_accuracy = 0
         sum_loss = 0
