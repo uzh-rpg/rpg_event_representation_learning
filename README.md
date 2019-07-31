@@ -52,7 +52,8 @@ Here, `validation_dataset` and `training_dataset` should point to the folders wh
 Training can be visualized by calling tensorboard
 
     tensorboard --log_dir log/temp
-    
+
+The training and validation curves should look something like this:    
 ![alt_text](resources/tb.png)
 
 ### Additional parameters 
