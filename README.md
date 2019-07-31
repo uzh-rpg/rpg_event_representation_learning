@@ -52,6 +52,7 @@ Here, `validation_dataset` and `training_dataset` should point to the folders wh
 * `--pin_memory` wether to pin memory or not
 * `--num_epochs` number of epochs to train
 * `--save_every_n_epochs` save a checkpoint every n epochs.
+* `--batch_size` batch size for training
 
 ### Visualization
 
