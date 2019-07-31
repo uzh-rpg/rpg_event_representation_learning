@@ -60,7 +60,7 @@ Training can be visualized by calling tensorboard
 
     tensorboard --log_dir log/temp
 
-The training and validation curves should look something like this:    
+Training and validation losses as well as classification accuracies are plotted. In addition, the learnt representations are visualized. The training and validation curves should look something like this:    
 ![alt_text](resources/tb.png)
 
 ## Testing
