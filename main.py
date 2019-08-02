@@ -140,6 +140,7 @@ if __name__ == '__main__':
             print("New best at ", validation_loss)
 
         if i % flags.save_every_n_epochs == 0:
+            state_dict = model.state_dict()
             torch.save({
                 "state_dict": state_dict,
                 "min_val_loss": min_validation_loss,
