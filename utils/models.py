@@ -78,17 +78,16 @@ class ValueLayer(nn.Module):
 
         return gt_values
 
+
 class QuantizationLayer(nn.Module):
     def __init__(self, dim,
                  mlp_layers=[1, 100, 100, 1],
-                 activation=nn.LeakyReLU(negative_slope=0.1),
-                 normalize=False):
+                 activation=nn.LeakyReLU(negative_slope=0.1)):
         nn.Module.__init__(self)
         self.value_layer = ValueLayer(mlp_layers,
                                       activation=activation,
                                       num_channels=dim[0])
         self.dim = dim
-        self.normalize = normalize
 
     def forward(self, events):
         # points is a list, since events can have any size
@@ -126,11 +125,10 @@ class Classifier(nn.Module):
                  num_classes=101,
                  mlp_layers=[1, 30, 30, 1],
                  activation=nn.LeakyReLU(negative_slope=0.1),
-                 normalize=False,
                  pretrained=True):
 
         nn.Module.__init__(self)
-        self.quantization_layer = QuantizationLayer(voxel_dimension, mlp_layers, activation, normalize)
+        self.quantization_layer = QuantizationLayer(voxel_dimension, mlp_layers, activation)
         self.classifier = resnet34(pretrained=pretrained)
 
         self.crop_dimension = crop_dimension
