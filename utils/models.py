@@ -91,12 +91,18 @@ class QuantizationLayer(nn.Module):
 
     def forward(self, events):
         # points is a list, since events can have any size
-        num_voxels = int(2 * np.prod(self.dim) * (1+events[-1,-1]).item())
+        B = (1+events[-1,-1]).item()
+        num_voxels = int(2 * np.prod(self.dim) * B)
         vox = events[0].new_full([num_voxels,], fill_value=0)
         C, H, W = self.dim
 
         # get values for each channel
         x, y, t, p, b = events.t()
+
+        # normalizing timestamps
+        for bi in range(B):
+            t[events[:,-1] == bi] /= t[events[:,-1] == bi].max()
+
         p = (p+1)/2  # maps polarity to 0, 1
 
         idx_before_bins = x \
