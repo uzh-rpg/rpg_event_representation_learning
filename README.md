@@ -1,5 +1,7 @@
 # Event Representation Learning
 
+[![Event Representation Learning](resources/youtube_preview.png)](https://youtu.be/bQtSx59GXRY)
+
 This repository contains learning code that implements 
 event representation learning as described in Gehrig et al. ICCV'19.
 
