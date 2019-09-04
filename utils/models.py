@@ -70,11 +70,11 @@ class ValueLayer(nn.Module):
     def trilinear_kernel(self, ts, num_channels):
         gt_values = torch.zeros_like(ts)
 
-        gt_values[ts > 0] = (1 - num_channels * ts)[ts > 0]
-        gt_values[ts < 0] = (num_channels * ts + 1)[ts < 0]
+        gt_values[ts > 0] = (1 - (num_channels-1) * ts)[ts > 0]
+        gt_values[ts < 0] = ((num_channels-1) * ts + 1)[ts < 0]
 
-        gt_values[ts < -1.0 / num_channels] = 0
-        gt_values[ts > 1.0 / num_channels] = 0
+        gt_values[ts < -1.0 / (num_channels-1)] = 0
+        gt_values[ts > 1.0 / (num_channels-1)] = 0
 
         return gt_values
 
