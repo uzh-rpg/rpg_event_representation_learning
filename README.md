@@ -7,7 +7,7 @@ event representation learning as described in Gehrig et al. ICCV'19.
 
 If you use this code in an academic context, please cite the following work:
 
-[Daniel Gehrig](https://danielgehrig18.github.io/), Antonio Loquercio, Konstantinos G. Derpanis, Davide Scaramuzza, "End-to-End Learning of Representations 
+[Daniel Gehrig](https://danielgehrig18.github.io/), [Antonio Loquercio](https://antonilo.github.io/), Konstantinos G. Derpanis, Davide Scaramuzza, "End-to-End Learning of Representations 
 for Asynchronous Event-Based Data", The International Conference on Computer Vision (ICCV), 2019
 
 ```
