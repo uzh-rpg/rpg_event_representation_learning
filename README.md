@@ -3,7 +3,7 @@
 [![Event Representation Learning](resources/youtube_preview.png)](https://youtu.be/bQtSx59GXRY)
 
 This repository contains learning code that implements 
-event representation learning as described in Gehrig et al. ICCV'19.
+event representation learning as described in Gehrig et al. ICCV'19. The paper can be found [here](http://rpg.ifi.uzh.ch/docs/ICCV19_Gehrig.pdf)
 
 If you use this code in an academic context, please cite the following work:
 
