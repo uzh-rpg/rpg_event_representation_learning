@@ -10,8 +10,6 @@ DEBUG = 8
 
 if DEBUG>0:
     import matplotlib.pyplot as plt
-    import numpy as np
-
 
 class ValueLayer(nn.Module):
     def __init__(self, mlp_layers, activation=nn.ReLU(), num_channels=9):
@@ -102,15 +100,12 @@ class QuantizationLayer(nn.Module):
         B = int((1+events[-1,-1]).item())
 
         num_container = int( np.prod(self.dim) * B)
-        container = torch.zeros(num_container, dtype=torch.int32)
+        container = torch.zeros(num_container, dtype=torch.int32, device=events.device)
 
         num_counter = int( np.prod(self.vox_dim) * B)
-        counter = torch.zeros(num_counter, dtype=torch.int32)
+        counter = torch.zeros(num_counter, dtype=torch.int32, device=events.device)
 
-        timer = torch.zeros(num_counter, dtype=torch.float32)
-
-        # num_voxels = int( 3 * np.prod(self.vox_dim) * B)
-        # vox = torch.zeros(num_voxels, dtype=torch.float32)
+        timer = torch.zeros(num_counter, dtype=torch.float32, device=events.device)
         
         H, W = self.dim
 
@@ -161,24 +156,24 @@ class QuantizationLayer(nn.Module):
         if DEBUG==9:
             IMG = 0
             print(vox.size())
-            visualization = plt.figure()
-            fig0 = visualization.add_subplot(221)
-            fig1 = visualization.add_subplot(222)
-            fig2 = visualization.add_subplot(223)
-            fig3 = visualization.add_subplot(224)
-            img0 = timer[IMG].numpy()
-            img1 = counter[IMG].numpy()
-            img1 = np.where(img1>0, 255, 0)
-            img2 = diff_y[IMG].numpy()
-            img2 = np.where(img2>0, 255, 0)
-            img3 = container[IMG].numpy()
-            img3 = np.where(img3>0, 255, 0)
-            fig0.imshow(img0, cmap='gray', vmin=0, vmax=1)
-            fig1.imshow(img1, cmap='gray', vmin=0, vmax=255)
-            fig2.imshow(img2, cmap='gray', vmin=0, vmax=255)
-            fig3.imshow(img3, cmap='gray', vmin=0, vmax=255)
-            plt.show(block=False)
-            plt.pause(10)
+            # visualization = plt.figure()
+            # fig0 = visualization.add_subplot(221)
+            # fig1 = visualization.add_subplot(222)
+            # fig2 = visualization.add_subplot(223)
+            # fig3 = visualization.add_subplot(224)
+            # img0 = timer[IMG].numpy()
+            # img1 = counter[IMG].numpy()
+            # img1 = np.where(img1>0, 255, 0)
+            # img2 = diff_y[IMG].numpy()
+            # img2 = np.where(img2>0, 255, 0)
+            # img3 = container[IMG].numpy()
+            # img3 = np.where(img3>0, 255, 0)
+            # fig0.imshow(img0, cmap='gray', vmin=0, vmax=1)
+            # fig1.imshow(img1, cmap='gray', vmin=0, vmax=255)
+            # fig2.imshow(img2, cmap='gray', vmin=0, vmax=255)
+            # fig3.imshow(img3, cmap='gray', vmin=0, vmax=255)
+            # plt.show(block=False)
+            # plt.pause(10)
 
         return vox
 

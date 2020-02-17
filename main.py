@@ -65,8 +65,8 @@ def percentile(t, q):
     return result[:,None,None,None]
 
 def create_image(representation):
-    B, C, H, W = representation.shape
-    representation = representation.view(B, 3, C // 3, H, W).sum(2)
+    # B, C, H, W = representation.shape
+    # representation = representation.view(B, 3, C // 3, H, W).sum(2)
 
     # do robust min max norm
     representation = representation.detach().cpu()
