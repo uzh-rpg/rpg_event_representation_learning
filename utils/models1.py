@@ -6,9 +6,9 @@ import numpy as np
 from torchvision.models.resnet import resnet34
 import tqdm
 
-DEBUG = 9
+DEBUG = 8
 
-if DEBUG==9:
+if DEBUG>0:
     import matplotlib.pyplot as plt
     import numpy as np
 
@@ -115,6 +115,7 @@ class QuantizationLayer(nn.Module):
         H, W = self.dim
 
         # get values for each channel
+        # x, y in the form of +x axis with -y axis
         x, y, t, p, b = events.t()
 
         # normalizing timestamps
@@ -126,10 +127,10 @@ class QuantizationLayer(nn.Module):
         idx_in_container = x + W*y + W*H*b
         num_events_ones = torch.ones_like(idx_in_container, dtype=torch.int32)
         container.put_(idx_in_container.long(), num_events_ones, accumulate=True)
-        container = container.view(-1, H, W)
+        container = container.view(-1, H, W)        
 
-        idx_in_counter = x//2 + W*y//4 + W*H*b//4
-        num_events_ones = torch.ones_like(idx_in_counter, dtype=torch.int32)
+        idx_in_counter = x//2 + W//2*(y//2) + W*H*b//4
+        # num_events_ones = torch.ones_like(idx_in_counter, dtype=torch.int32)
         counter.put_(idx_in_counter.long(), num_events_ones, accumulate=True)
         counter = counter.float()
         timerDivider = counter.clone()
@@ -144,35 +145,40 @@ class QuantizationLayer(nn.Module):
 
         diff_y = container[:,::2] - container[:,1::2]
         diff_y = diff_y[:,:,::2] + diff_y[:,:,1::2]
+        diff_y = diff_y.float()
+
         diff_x = container[:,:,::2] - container[:,:,1::2]
         diff_x = diff_x[:,1::2] + diff_x[:,::2]
+        diff_x = diff_x.float()
+
+        diff_x = diff_x.unsqueeze(dim=1)
+        diff_y = diff_y.unsqueeze(dim=1)
+        timer = timer.unsqueeze(dim=1)
+        counter = counter.unsqueeze(dim=1)
+
+        vox = torch.cat([diff_x, diff_y, timer, counter], dim=1)
 
         if DEBUG==9:
-            print(idx_in_container.size())
-            print(container.size())
-            print(counter.size())
-            print(timer.size())
-            print(diff_y.size())
-            img = counter[1].numpy()
-            img = np.where(img>0, 255, 0)
-            plt.imshow(img)
+            IMG = 0
+            print(vox.size())
+            visualization = plt.figure()
+            fig0 = visualization.add_subplot(221)
+            fig1 = visualization.add_subplot(222)
+            fig2 = visualization.add_subplot(223)
+            fig3 = visualization.add_subplot(224)
+            img0 = timer[IMG].numpy()
+            img1 = counter[IMG].numpy()
+            img1 = np.where(img1>0, 255, 0)
+            img2 = diff_y[IMG].numpy()
+            img2 = np.where(img2>0, 255, 0)
+            img3 = container[IMG].numpy()
+            img3 = np.where(img3>0, 255, 0)
+            fig0.imshow(img0, cmap='gray', vmin=0, vmax=1)
+            fig1.imshow(img1, cmap='gray', vmin=0, vmax=255)
+            fig2.imshow(img2, cmap='gray', vmin=0, vmax=255)
+            fig3.imshow(img3, cmap='gray', vmin=0, vmax=255)
+            plt.show(block=False)
             plt.pause(10)
-
-        # idx_before_bins = x \
-        #                   + W * y \
-        #                   + 0 \
-        #                   + W * H * p \
-        #                   + W * H * 2 * b
-
-        # for i_bin in range(C):
-        #     values = t * self.value_layer.forward(t-i_bin/(C-1))
-
-        #     # draw in voxel grid
-        #     idx = idx_before_bins + W * H * i_bin
-        #     vox.put_(idx.long(), values, accumulate=True)
-
-        # vox = vox.view(-1, 2, C, H, W)
-        # vox = torch.cat([vox[:, 0, ...], vox[:, 1, ...]], 1)
 
         return vox
 
@@ -194,7 +200,7 @@ class Classifier(nn.Module):
 
         # replace fc layer and first convolutional layer
         # 2 channels, vector_representation & count_representation & time_representation
-        self.classifier.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.classifier.conv1 = nn.Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.classifier.fc = nn.Linear(self.classifier.fc.in_features, num_classes)
 
     def crop_and_resize_to_resolution(self, x, output_resolution=(224, 224)):

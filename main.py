@@ -6,9 +6,9 @@ import os
 import numpy as np
 import tqdm
 
-DEBUG = 9
+DEBUG = 8
 
-if DEBUG==9:
+if DEBUG>0:
     from utils.models1 import Classifier
 else:
     from utils.models import Classifier
