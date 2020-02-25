@@ -4,10 +4,15 @@ import torch
 import tqdm
 import os
 
-from loader import Loader
-from loss import cross_entropy_loss_and_accuracy
-from models import Classifier
-from dataset import NCaltech101
+DEBUG = 8
+
+from utils.loader import Loader
+from utils.loss import cross_entropy_loss_and_accuracy
+if DEBUG>0:
+    from utils.models1 import Classifier
+else:
+    from utils.models import Classifier
+from utils.dataset import NCaltech101
 
 
 def FLAGS():
