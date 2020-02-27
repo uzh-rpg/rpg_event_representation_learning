@@ -194,7 +194,7 @@ class Classifier(nn.Module):
         self.crop_dimension = crop_dimension
 
         # replace fc layer and first convolutional layer
-        # 2 channels, vector_representation & count_representation & time_representation
+        # 4 channels, vector_x_representation & vector_y_representation & count_representation & time_representation
         self.classifier.conv1 = nn.Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.classifier.fc = nn.Linear(self.classifier.fc.in_features, num_classes)
 
