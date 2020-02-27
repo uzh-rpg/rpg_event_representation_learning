@@ -54,6 +54,8 @@ def FLAGS():
           f"log_dir: {flags.log_dir}\n"
           f"training_dataset: {flags.training_dataset}\n"
           f"validation_dataset: {flags.validation_dataset}\n"
+          f"num_workers: {flags.num_workers}\n"
+          f"pin_memory: {flags.pin_memory}\n"
           f"----------------------------")
 
     return flags

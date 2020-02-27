@@ -4,9 +4,14 @@ import torch
 import tqdm
 import os
 
+DEBUG = 8
+
 from utils.loader import Loader
 from utils.loss import cross_entropy_loss_and_accuracy
-from utils.models import Classifier
+if DEBUG>0:
+    from utils.models1 import Classifier
+else:
+    from utils.models import Classifier
 from utils.dataset import NCaltech101
 
 
