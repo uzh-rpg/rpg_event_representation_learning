@@ -110,7 +110,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.5)
 
-    writer = SummaryWriter(flags.log_dir)
+    #writer = SummaryWriter(flags.log_dir)
 
     iteration = 0
     min_validation_loss = 1000
@@ -133,12 +133,12 @@ if __name__ == '__main__':
         validation_loss = sum_loss.item() / len(validation_loader)
         validation_accuracy = sum_accuracy.item() / len(validation_loader)
 
-        writer.add_scalar("validation/accuracy", validation_accuracy, iteration)
-        writer.add_scalar("validation/loss", validation_loss, iteration)
+        #writer.add_scalar("validation/accuracy", validation_accuracy, iteration)
+        #writer.add_scalar("validation/loss", validation_loss, iteration)
 
         # visualize representation
-        representation_vizualization = create_image(representation)
-        writer.add_image("validation/representation", representation_vizualization, iteration)
+        #representation_vizualization = create_image(representation)
+        #writer.add_image("validation/representation", representation_vizualization, iteration)
 
         print(f"Validation Loss {validation_loss:.4f}  Accuracy {validation_accuracy:.4f}")
 
@@ -188,8 +188,8 @@ if __name__ == '__main__':
         training_accuracy = sum_accuracy.item() / len(training_loader)
         print(f"Training Iteration {iteration:5d}  Loss {training_loss:.4f}  Accuracy {training_accuracy:.4f}")
 
-        writer.add_scalar("training/accuracy", training_accuracy, iteration)
-        writer.add_scalar("training/loss", training_loss, iteration)
+        #writer.add_scalar("training/accuracy", training_accuracy, iteration)
+        #writer.add_scalar("training/loss", training_loss, iteration)
 
-        representation_vizualization = create_image(representation)
-        writer.add_image("training/representation", representation_vizualization, iteration)
+        #representation_vizualization = create_image(representation)
+        #writer.add_image("training/representation", representation_vizualization, iteration)
