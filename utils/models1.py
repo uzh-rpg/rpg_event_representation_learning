@@ -1,3 +1,4 @@
+import math
 import torch.nn as nn
 from os.path import join, dirname, isfile
 import torch
@@ -100,7 +101,7 @@ class QuantizationLayer(nn.Module):
         B = int((1+events[-1,-1]).item())
 
         # separate events into 10 segments with evently-divided timestamps
-        S = 10
+        S = 16
 
         # obtain the height & width
         H, W = self.dim
@@ -143,7 +144,7 @@ class QuantizationLayer(nn.Module):
         pad = lambda n: (n, 0) if n>=0 else (0, -n)
         erode_w = torch.ones((1, 1, 3, 3), dtype=torch.float32, device=events.device)
         for bi in range(B):
-            segment = combiner[bi][0]
+            segment = combiner[bi][0].clone().detach()
             time_segment_bi = time_segment[events[:,-1] == bi]
             x_bi = x[events[:,-1] == bi]
             y_bi = y[events[:,-1] == bi]
@@ -155,24 +156,22 @@ class QuantizationLayer(nn.Module):
                 y_mean_new = torch.mean(y_bi[time_segment_bi == i]).item()
                 pts_new = len(time_segment_bi[time_segment_bi == i])
                 if pts_new > pts:
-                    tmp_segment = segment.clone().detach()
-                    segment = combiner[bi][i]
-                    x_diff = int( round(x_mean_new - x_mean))
-                    y_diff = int( round(y_mean_new - y_mean))
+                    tmp_segment = segment
+                    segment = combiner[bi][i].clone().detach()
+                    x_diff = int( math.floor(x_mean_new - x_mean))
+                    y_diff = int( math.floor(y_mean_new - y_mean))
                     x_mean = x_mean_new
                     y_mean = y_mean_new
                 else:
-                    tmp_segment = combiner[bi][i]
-                    x_diff = int( round(x_mean - x_mean_new))
-                    y_diff = int( round(y_mean - y_mean_new))
+                    tmp_segment = combiner[bi][i].clone().detach()
+                    x_diff = int( math.floor(x_mean - x_mean_new))
+                    y_diff = int( math.floor(y_mean - y_mean_new))
+
                 padding = pad(x_diff) + pad(y_diff)
                 padded_segment = F.pad(tmp_segment, padding)
                 padded_segment = padded_segment[:H,:W]
                 segment += padded_segment
-                segment = segment.unsqueeze(0).unsqueeze(0)
-                segment = F.conv2d(segment, erode_w, padding=1)
-                segment = segment.squeeze(0).squeeze(0)
-            combined_img[bi] = F.relu(segment - 1)
+            combined_img[bi] = F.relu(segment - S)
 
         idx_in_counter = x//2 + W//2*(y//2) + W*H*b//4
         counter.put_(idx_in_counter.long(), num_events_ones, accumulate=True)
@@ -208,27 +207,34 @@ class QuantizationLayer(nn.Module):
         if DEBUG==9:
             IMG = 0
             print(vox.size())
-            # visualization = plt.figure()
-
-            # fig0 = visualization.add_subplot(121)
-            # fig1 = visualization.add_subplot(122)
-            # img0 = combined_img[IMG].numpy()
+            visualization = plt.figure()
+            # fig0 = visualization.add_subplot(221)
+            # fig1 = visualization.add_subplot(222)
+            # fig2 = visualization.add_subplot(223)
+            # fig3 = visualization.add_subplot(224)
+            # img0 = timer[IMG][0].numpy()
             # img0 = np.where(img0>0, 255, 0)
-            # img1 = container[IMG].numpy()
+            # img1 = combined_img[IMG][0].numpy()
             # img1 = np.where(img1>0, 255, 0)
+            # img2 = combiner[IMG][1].numpy()
+            # img2 = np.where(img2>0, 255, 0)
+            # img3 = combiner[IMG][9].numpy()
+            # img3 = np.where(img3>0, 255, 0)
             # fig0.imshow(img0, cmap='gray', vmin=0, vmax=255)
             # fig1.imshow(img1, cmap='gray', vmin=0, vmax=255)
+            # fig2.imshow(img2, cmap='gray', vmin=0, vmax=255)
+            # fig3.imshow(img3, cmap='gray', vmin=0, vmax=255)
             # plt.show(block=False)
-            # plt.pause(1000)
+            # plt.pause(10)
 
             # fig0 = visualization.add_subplot(221)
             # fig1 = visualization.add_subplot(222)
             # fig2 = visualization.add_subplot(223)
             # fig3 = visualization.add_subplot(224)
-            # img0 = timer[IMG].numpy()
-            # img1 = counter[IMG].numpy()
+            # img0 = timer[IMG][0].numpy()
+            # img1 = counter[IMG][0].numpy()
             # img1 = np.where(img1>0, 255, 0)
-            # img2 = diff_y[IMG].numpy()
+            # img2 = diff_y[IMG][0].numpy()
             # img2 = np.where(img2>0, 255, 0)
             # img3 = container[IMG].numpy()
             # img3 = np.where(img3>0, 255, 0)
