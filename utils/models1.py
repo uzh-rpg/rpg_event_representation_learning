@@ -7,7 +7,7 @@ import numpy as np
 from torchvision.models.resnet import resnet34
 import tqdm
 
-DEBUG = 0
+DEBUG = 9
 
 if DEBUG>0:
     import matplotlib.pyplot as plt
@@ -106,6 +106,9 @@ class QuantizationLayer(nn.Module):
         # obtain the height & width
         H, W = self.dim
 
+        num_diluted = int( np.prod(self.dim) * S * B)
+        dilution = torch.zeros(num_diluted, dtype=torch.int32, device=events.device)
+
         num_container = int( np.prod(self.dim) * B)
         container = torch.zeros(num_container, dtype=torch.int32, device=events.device)
 
@@ -128,6 +131,39 @@ class QuantizationLayer(nn.Module):
             t[events[:,-1] == bi] /= t[events[:,-1] == bi].max()
 
         p = (p+1)/2  # maps polarity to 0, 1
+
+        row_cnt = len(events)
+        num_events_ones = torch.ones(row_cnt, dtype=torch.int32, device=events.device)
+        time_separator = ( t / (1/S)).int()
+        time_separator[time_separator == S] = S-1
+        idx_in_dilution = x + W*y + W*H*time_separator + W*H*S*b
+        dilution.put_(idx_in_dilution.long(), num_events_ones, accumulate=False)
+        dilution = dilution.view(-1, S, H, W).float()
+        limiter = dilution.clone().detach()
+        limiter = limiter.permute(1,0,2,3)
+        erode_w = torch.ones( (B, 1, 3, 3), dtype=torch.float32, device=events.device)
+        erode_w[:,:,1,1] = 0
+        erode_w /= 8
+        for i in range(1, S):
+            limiter[i] *= (S-i)/S
+            limiter[i] += limiter[i-1] * i/S
+            limiter[i] = F.conv2d( limiter[i].unsqueeze(0), erode_w, padding=1, stride=1, groups=B) - 0.25
+            # limiter[i] += previous.squeeze(0) - 0.25
+            if DEBUG==9:
+                img0 = limiter[i][2].numpy()
+                # img0 = img0 / np.max(img0)
+                img0 = np.where(img0>0, 255, 0)
+                plt.imshow(img0, cmap='gray', vmin=0, vmax=1)
+                plt.show()
+        while True:
+            pass
+        # limiter = limiter.permute(1,0,2,3)
+        # dilution = dilution.view(-1, 1, H, W)
+        # limiter = limiter.view(-1, 1, H, W)
+        # print(limiter.size())
+        # combiner = torch.cat([dilution, limiter], dim=1)
+        # connect_w = torch.ones( ( len(dilution), 2, 3, 3), dtype=torch.float32, device=events.device)
+        # connect_w[:,1,:,:] /= 9
 
         idx_in_container = x + W*y + W*H*b
         num_events_ones = torch.ones_like(idx_in_container, dtype=torch.int32)
