@@ -199,10 +199,9 @@ class QuantizationLayer(nn.Module):
         timer = timer.unsqueeze(dim=1)
         counter = counter.unsqueeze(dim=1)
         combined_img = combined_img.unsqueeze(dim=1)
+        combined_img = F.interpolate(combined_img, scale_factor=0.5)
 
-        vox = torch.cat([diff_x, diff_y, timer, counter], dim=1)
-        vox = F.interpolate(vox, scale_factor=2)
-        vox = torch.cat([vox, combined_img], dim=1)
+        vox = torch.cat([diff_x, diff_y, timer, counter, combined_img], dim=1)
 
         if DEBUG==9:
             IMG = 0
