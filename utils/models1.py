@@ -100,7 +100,7 @@ class QuantizationLayer(nn.Module):
         # points is a list, since events can have any size
         B = int((1+events[-1,-1]).item())
 
-        # separate events into 10 segments with evently-divided timestamps
+        # separate events into S segments with evently-divided timestamps
         S = 16
 
         # obtain the height & width
