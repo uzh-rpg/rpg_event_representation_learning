@@ -7,7 +7,7 @@ import numpy as np
 from torchvision.models.resnet import resnet34
 import tqdm
 
-DEBUG = 9
+DEBUG = 1
 
 if DEBUG>0:
     import matplotlib.pyplot as plt
@@ -111,11 +111,9 @@ class QuantizationLayer(nn.Module):
 
         num_container = int( np.prod(self.dim) * B)
         container = torch.zeros(num_container, dtype=torch.int32, device=events.device)
-
-        num_combiner = int( np.prod(self.dim) * S * B)
-        combiner = torch.zeros(num_combiner, dtype=torch.int32, device=events.device)
-        combined_img = torch.zeros(num_container, dtype=torch.float32, device=events.device)
-        combined_img = combined_img.view(-1, H, W)
+        
+        best_dilution = torch.zeros(num_container, dtype=torch.float32, device=events.device)
+        best_dilution = best_dilution.view(-1, H, W)
 
         num_counter = int( np.prod(self.vox_dim) * B)
         counter = torch.zeros(num_counter, dtype=torch.int32, device=events.device)
@@ -139,75 +137,33 @@ class QuantizationLayer(nn.Module):
         idx_in_dilution = x + W*y + W*H*time_separator + W*H*S*b
         dilution.put_(idx_in_dilution.long(), num_events_ones, accumulate=False)
         dilution = dilution.view(-1, S, H, W).float()
-        limiter = dilution.clone().detach()
-        limiter = limiter.permute(1,0,2,3)
+        dilution = dilution.permute(1,0,2,3)
         erode_w = torch.ones( (B, 1, 3, 3), dtype=torch.float32, device=events.device)
         erode_w[:,:,1,1] = 0
         erode_w /= 8
         for i in range(1, S):
-            limiter[i] *= (S-i)/S
-            limiter[i] += limiter[i-1] * i/S
-            limiter[i] = F.conv2d( limiter[i].unsqueeze(0), erode_w, padding=1, stride=1, groups=B) - 0.25
-            # limiter[i] += previous.squeeze(0) - 0.25
+            dilution[i] *= 0.5 + (S-i)/S
+            dilution[i] += dilution[i-1] * i/S
+            dilution[i] = F.conv2d( dilution[i].unsqueeze(0), erode_w, padding=1, stride=1, groups=B) - 0.25
             if DEBUG==9:
-                img0 = limiter[i][2].numpy()
-                # img0 = img0 / np.max(img0)
-                img0 = np.where(img0>0, 255, 0)
+                img0 = dilution[i][2].numpy()
+                img0 = img0 / np.max(img0)
+                # img0 = np.where(img0>0, 255, 0)
                 plt.imshow(img0, cmap='gray', vmin=0, vmax=1)
                 plt.show()
-        while True:
-            pass
-        # limiter = limiter.permute(1,0,2,3)
-        # dilution = dilution.view(-1, 1, H, W)
-        # limiter = limiter.view(-1, 1, H, W)
-        # print(limiter.size())
-        # combiner = torch.cat([dilution, limiter], dim=1)
-        # connect_w = torch.ones( ( len(dilution), 2, 3, 3), dtype=torch.float32, device=events.device)
-        # connect_w[:,1,:,:] /= 9
+        dilution = dilution.permute(1,0,2,3)
+        limiter = dilution>0
+        limiter = limiter.view(B,S,-1)
+        non_zero = (limiter==0).sum(dim=-1)
+        _, best_idx = non_zero.max(dim=-1)
+        for bi in range(B):
+            i = best_idx[bi]
+            best_dilution[bi] = dilution[bi][i]
 
         idx_in_container = x + W*y + W*H*b
-        num_events_ones = torch.ones_like(idx_in_container, dtype=torch.int32)
+        # num_events_ones = torch.ones_like(idx_in_container, dtype=torch.int32)
         container.put_(idx_in_container.long(), num_events_ones, accumulate=True)
         container = container.view(-1, H, W)
-
-        row_cnt = len(events)
-        time_segment = torch.zeros(row_cnt, dtype=torch.int32, device=events.device)
-        for i in range(1, S):
-            time_segment[t >= i/S] += 1
-        idx_in_combiner = x + W*y + W*H*time_segment + W*H*S*b
-        combiner.put_(idx_in_combiner.long(), time_segment, accumulate=True)
-        combiner = combiner.view(-1, S, H, W).float()
-        pad = lambda n: (n, 0) if n>=0 else (0, -n)
-        erode_w = torch.ones((1, 1, 3, 3), dtype=torch.float32, device=events.device)
-        for bi in range(B):
-            segment = combiner[bi][0].clone().detach()
-            time_segment_bi = time_segment[events[:,-1] == bi]
-            x_bi = x[events[:,-1] == bi]
-            y_bi = y[events[:,-1] == bi]
-            x_mean = torch.mean(x_bi[time_segment_bi == 0]).item()
-            y_mean = torch.mean(y_bi[time_segment_bi == 0]).item()
-            pts = len(time_segment_bi[time_segment_bi == 0])
-            for i in range(1, S):
-                x_mean_new = torch.mean(x_bi[time_segment_bi == i]).item()
-                y_mean_new = torch.mean(y_bi[time_segment_bi == i]).item()
-                pts_new = len(time_segment_bi[time_segment_bi == i])
-                if pts_new > pts:
-                    tmp_segment = segment
-                    segment = combiner[bi][i].clone().detach()
-                    x_diff = int( math.floor(x_mean_new - x_mean))
-                    y_diff = int( math.floor(y_mean_new - y_mean))
-                    x_mean = x_mean_new
-                    y_mean = y_mean_new
-                else:
-                    tmp_segment = combiner[bi][i].clone().detach()
-                    x_diff = int( math.floor(x_mean - x_mean_new))
-                    y_diff = int( math.floor(y_mean - y_mean_new))
-
-                padding = pad(x_diff) + pad(y_diff)
-                padded_segment = F.pad(tmp_segment, padding)
-                padded_segment = padded_segment[:H,:W]
-                segment += padded_segment
-            combined_img[bi] = F.relu(segment - S)
 
         idx_in_counter = x//2 + W//2*(y//2) + W*H*b//4
         counter.put_(idx_in_counter.long(), num_events_ones, accumulate=True)
@@ -234,10 +190,10 @@ class QuantizationLayer(nn.Module):
         diff_y = diff_y.unsqueeze(dim=1)
         timer = timer.unsqueeze(dim=1)
         counter = counter.unsqueeze(dim=1)
-        combined_img = combined_img.unsqueeze(dim=1)
-        combined_img = F.interpolate(combined_img, scale_factor=0.5)
+        best_dilution = best_dilution.unsqueeze(dim=1)
+        best_dilution = F.interpolate(best_dilution, scale_factor=0.5)
 
-        vox = torch.cat([diff_x, diff_y, timer, counter, combined_img], dim=1)
+        vox = torch.cat([diff_x, diff_y, timer, counter, best_dilution], dim=1)
 
         if DEBUG==9:
             IMG = 0
