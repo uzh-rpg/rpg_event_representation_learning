@@ -306,7 +306,7 @@ class Classifier(nn.Module):
         self.crop_dimension = crop_dimension
 
         # replace fc layer and first convolutional layer
-        # 1 channel
+        # 5 channel
         self.classifier.conv1 = nn.Conv2d(5, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.classifier.fc = nn.Linear(self.classifier.fc.in_features, num_classes)
 
