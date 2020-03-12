@@ -99,7 +99,7 @@ if __name__ == '__main__':
 
     # optimizer and lr scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, factor=0.1, verbose=True)
+    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.5)
 
     #writer = SummaryWriter(flags.log_dir)
 
@@ -109,36 +109,8 @@ if __name__ == '__main__':
     for i in range(flags.num_epochs):
         sum_accuracy = 0
         sum_loss = 0
-        model = model.train()
-        print(f"Training step [{i:3d}/{flags.num_epochs:3d}]")
-        for events, labels in tqdm.tqdm(training_loader):
-            optimizer.zero_grad()
-
-            pred_labels, representation = model(events)
-            loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
-
-            loss.backward()
-
-            optimizer.step()
-
-            sum_accuracy += accuracy
-            sum_loss += loss
-
-            iteration += 1
-
-        training_loss = sum_loss.item() / len(training_loader)
-        training_accuracy = sum_accuracy.item() / len(training_loader)
-        print(f"Training Iteration {iteration:5d}  Loss {training_loss:.4f}  Accuracy {training_accuracy:.4f}")
-
-        #writer.add_scalar("training/accuracy", training_accuracy, iteration)
-        #writer.add_scalar("training/loss", training_loss, iteration)
-
-        #representation_vizualization = create_image(representation)
-        #writer.add_image("training/representation", representation_vizualization, iteration)
-
-        sum_accuracy = 0
-        sum_loss = 0
         model = model.eval()
+
         print(f"Validation step [{i:3d}/{flags.num_epochs:3d}]")
         for events, labels in tqdm.tqdm(validation_loader):
 
@@ -180,4 +152,35 @@ if __name__ == '__main__':
                 "iteration": iteration
             }, "log/checkpoint_%05d_%.4f.pth" % (iteration, min_validation_loss))
 
-        lr_scheduler.step(validation_loss)
+        sum_accuracy = 0
+        sum_loss = 0
+
+        model = model.train()
+        print(f"Training step [{i:3d}/{flags.num_epochs:3d}]")
+        for events, labels in tqdm.tqdm(training_loader):
+            optimizer.zero_grad()
+
+            pred_labels, representation = model(events)
+            loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
+
+            loss.backward()
+
+            optimizer.step()
+
+            sum_accuracy += accuracy
+            sum_loss += loss
+
+            iteration += 1
+
+        if i % 10 == 9:
+            lr_scheduler.step()
+
+        training_loss = sum_loss.item() / len(training_loader)
+        training_accuracy = sum_accuracy.item() / len(training_loader)
+        print(f"Training Iteration {iteration:5d}  Loss {training_loss:.4f}  Accuracy {training_accuracy:.4f}")
+
+        #writer.add_scalar("training/accuracy", training_accuracy, iteration)
+        #writer.add_scalar("training/loss", training_loss, iteration)
+
+        #representation_vizualization = create_image(representation)
+        #writer.add_image("training/representation", representation_vizualization, iteration)
