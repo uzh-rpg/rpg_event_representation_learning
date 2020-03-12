@@ -8,7 +8,7 @@ import numpy as np
 from torchvision.models.resnet import resnet34
 import tqdm
 
-DEBUG = 9
+DEBUG = 0
 
 if DEBUG>0:
     import matplotlib.pyplot as plt
@@ -117,13 +117,16 @@ class Classifier(nn.Module):
 
         nn.Module.__init__(self)
         self.quantization_layer = QuantizationLayer(voxel_dimension, mlp_layers, activation)
-        self.classifier = resnet34(pretrained=pretrained)
+        # self.classifier = resnet34(pretrained=pretrained)
+        self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'densenet121', pretrained=True)
 
         self.crop_dimension = crop_dimension
 
         # replace fc layer and first convolutional layer
-        self.classifier.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.classifier.fc = nn.Linear(self.classifier.fc.in_features, num_classes)
+        # self.classifier.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.classifier.features.conv0 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        # self.classifier.fc = nn.Linear(self.classifier.fc.in_features, num_classes)
+        self.classifier.classifier = nn.Linear(self.classifier.classifier.in_features, num_classes)
 
     def crop_and_resize_to_resolution(self, x, output_resolution=(224, 224)):
         B, C, H, W = x.shape
