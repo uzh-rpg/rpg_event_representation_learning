@@ -2,17 +2,18 @@ import numpy as np
 from os import listdir
 from os.path import join
 
-
 def random_shift_events(events, max_shift=20, resolution=(180, 240)):
     H, W = resolution
+    shifted_events = np.copy(events)
+    
     x_shift, y_shift = np.random.randint(-max_shift, max_shift+1, size=(2,))
-    events[:,0] += x_shift
-    events[:,1] += y_shift
+    shifted_events[:,0] += x_shift
+    shifted_events[:,1] += y_shift
 
-    valid_events = (events[:,0] >= 0) & (events[:,0] < W) & (events[:,1] >= 0) & (events[:,1] < H)
-    events = events[valid_events]
+    valid_events = (shifted_events[:,0] >= 0) & (shifted_events[:,0] < W) & (shifted_events[:,1] >= 0) & (shifted_events[:,1] < H)
+    shifted_events = shifted_events[valid_events]
 
-    return events
+    return shifted_events
 
 def random_flip_events_along_x(events, resolution=(180, 240), p=0.5):
     H, W = resolution
@@ -49,7 +50,8 @@ class NCaltech101:
         events = np.load(f).astype(np.float32)
 
         if self.augmentation:
-            events = random_shift_events(events)
+            events_shifted = random_shift_events(events)
+            events = np.concatenate( (events, events_shifted), axis=0)
             events = random_flip_events_along_x(events)
 
         return events, label
