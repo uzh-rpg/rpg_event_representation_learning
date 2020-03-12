@@ -20,7 +20,6 @@ from utils.dataset import NCaltech101
 torch.manual_seed(1)
 np.random.seed(1)
 
-
 def FLAGS():
     parser = argparse.ArgumentParser("""Train classifier using a learnt quantization layer.""")
 
@@ -97,14 +96,6 @@ if __name__ == '__main__':
     # model, and put to device
     model = Classifier()
     model = model.to(flags.device)
-
-    if DEBUG==9:
-        for events, labels in validation_loader:
-            with torch.no_grad():
-                pred_labels, representation = model(events)
-            print("DEBUG_9 ENDS")
-            while True:
-                pass
 
     # optimizer and lr scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
