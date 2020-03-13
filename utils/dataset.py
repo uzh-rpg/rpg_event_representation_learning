@@ -50,8 +50,7 @@ class NCaltech101:
         events = np.load(f).astype(np.float32)
 
         if self.augmentation:
-            events_shifted = random_shift_events(events)
-            events = np.concatenate( (events, events_shifted), axis=0)
+            events = random_shift_events(events)
             events = random_flip_events_along_x(events)
 
         return events, label
