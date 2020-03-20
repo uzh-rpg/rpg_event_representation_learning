@@ -8,7 +8,7 @@ import numpy as np
 from torchvision.models.resnet import resnet34
 import tqdm
 
-DEBUG = 0
+DEBUG = 9
 
 if DEBUG>0:
     import matplotlib.pyplot as plt
@@ -70,9 +70,19 @@ class QuantizationLayer(nn.Module):
             concentrate += mixture_bin[i]
 
         # normalizing pixels to range 0-1
-        concentrate = concentrate.view(-1,1,H,W).float()
+        # centralize the image
+        pad = lambda n: (n, 0) if n>=0 else (0, -n)
+        concentrate = concentrate.view(-1,H,W).float()
         for bi in range(B):
             concentrate[bi] /= concentrate[bi].max()
+            x_mean = torch.mean(x[events[:,-1] == bi]).item()
+            y_mean = torch.mean(y[events[:,-1] == bi]).item()
+            x_diff_from_center = int( math.floor(W//2 - x_mean))
+            y_diff_from_center = int( math.floor(H//2 - y_mean))
+            padding = pad(x_diff_from_center) + pad(y_diff_from_center)
+            padded = F.pad(concentrate[bi], padding)
+            concentrate[bi] = padded[:H,:W]
+        concentrate = concentrate.view(-1,1,H,W)
 
         if DEBUG==9:
             dilution = dilution.view(-1,S,H,W)
@@ -117,16 +127,19 @@ class Classifier(nn.Module):
 
         nn.Module.__init__(self)
         self.quantization_layer = QuantizationLayer(voxel_dimension, mlp_layers, activation)
-        # self.classifier = resnet34(pretrained=pretrained)
-        self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'densenet121', pretrained=True)
-
         self.crop_dimension = crop_dimension
 
-        # replace fc layer and first convolutional layer
-        # self.classifier.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.classifier.features.conv0 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        # self.classifier.fc = nn.Linear(self.classifier.fc.in_features, num_classes)
-        self.classifier.classifier = nn.Linear(self.classifier.classifier.in_features, num_classes)
+        use_resnet = True
+
+        if use_resnet:
+            self.classifier = resnet34(pretrained=pretrained)
+            # replace fc layer and first convolutional layer
+            self.classifier.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.classifier.fc = nn.Linear(self.classifier.fc.in_features, num_classes)
+        else:
+            self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'densenet121', pretrained=True)
+            self.classifier.features.conv0 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.classifier.classifier = nn.Linear(self.classifier.classifier.in_features, num_classes)
 
     def crop_and_resize_to_resolution(self, x, output_resolution=(224, 224)):
         B, C, H, W = x.shape
