@@ -8,15 +8,14 @@ import numpy as np
 from torchvision.models.resnet import resnet34
 import tqdm
 
-DEBUG = 9
+DEBUG = 0
 
 if DEBUG>0:
     import matplotlib.pyplot as plt
+    import time
 
 class QuantizationLayer(nn.Module):
-    def __init__(self, dim,
-                 mlp_layers=[1, 100, 100, 1],
-                 activation=nn.LeakyReLU(negative_slope=0.1)):
+    def __init__(self, dim):
         nn.Module.__init__(self)
         self.dim = dim
 
@@ -35,7 +34,7 @@ class QuantizationLayer(nn.Module):
 
         dilution = torch.zeros(num_diluted, dtype=torch.bool, device=events.device)
 
-        concentrate = torch.zeros(num_container, dtype=torch.int32, device=events.device)
+        concentrate = torch.zeros(num_container, dtype=torch.float32, device=events.device)
         concentrate = concentrate.view(-1, H, W)
 
         # get values for each channel
@@ -43,30 +42,29 @@ class QuantizationLayer(nn.Module):
         x, y, t, p, b = events.t()
 
         # normalizing timestamps
-        for bi in range(B):
-            t[events[:,-1] == bi] /= t[events[:,-1] == bi].max()
-
-        p = (p+1)/2  # maps polarity to 0, 1
+        fast_norm = True
+        if fast_norm:
+            t /= t.max()*1.001
+        else:
+            for bi in range(B):
+                t[events[:,-1] == bi] /= t[events[:,-1] == bi].max()*1.001
 
         row_cnt = len(events)
         num_events_ones = torch.ones(row_cnt, dtype=torch.bool, device=events.device)
-        time_separator = ( t / (1/S)).int()
-        time_separator[time_separator == S] = S-1
+        time_separator = (t * S).int()
         idx_in_dilution = x + W*y + W*H*time_separator + W*H*S*b
         dilution.put_(idx_in_dilution.long(), num_events_ones, accumulate=False)
-        dilution = dilution.view(-1, S, H, W)
-        mixture = dilution.clone().detach().float()
-        mixture = mixture.permute(1,0,2,3)
+        dilution = dilution.view(-1, S, H, W).permute(1,0,2,3).float()
+        dilution = dilution*2 - 1
         erode_w = torch.ones( (B, 1, 3, 3), dtype=torch.float32, device=events.device)
-        erode_w[:,:,1,1] = 0
-        erode_w /= 8
-        for i in range(1, S):
-            # mixture[i] *= 0.5 + (S-i)/S
-            mixture[i] += mixture[i-1]
-            mixture[i] = F.conv2d( mixture[i].unsqueeze(0), erode_w, padding=1, stride=1, groups=B) - 0.5
-            mixture[i] = F.relu(mixture[i])
-        mixture_bin = mixture > 0
-        for i in range(S):
+        erode_w[:,:,1,1] = -1
+        erode_w /= 16
+        for i in range(0, S-1):
+            dilution[i] = dilution[i] + dilution[i+1]*8
+            dilution[i] = F.conv2d( dilution[i].unsqueeze(0), erode_w, padding=1, stride=1, groups=B)
+            dilution[i] = F.relu(dilution[i])
+        mixture_bin = dilution > 0
+        for i in range(0, S-1):
             concentrate += mixture_bin[i]
 
         # normalizing pixels to range 0-1
@@ -85,7 +83,7 @@ class QuantizationLayer(nn.Module):
         concentrate = concentrate.view(-1,1,H,W)
 
         if DEBUG==9:
-            dilution = dilution.view(-1,S,H,W)
+            dilution = dilution.permute(1,0,2,3)
             for bi in range(B):
                 visualization = plt.figure()
                 fig0 = visualization.add_subplot(221)
@@ -95,13 +93,13 @@ class QuantizationLayer(nn.Module):
                 img0 = concentrate[bi][0].numpy()
                 # img0 = img0 / np.max(img0)
                 # img0 = np.where(img0>0, 255, 0)
-                img1 = dilution[bi][1].numpy()
+                img1 = dilution[bi][S//4].numpy()
                 # img1 = img1 / np.max(img1)
                 # img1 = np.where(img1>0, 1, 0)
-                img2 = dilution[bi][2].numpy()
+                img2 = dilution[bi][S//2].numpy()
                 # img2 = img2 / np.max(img2)
                 # img2 = np.where(img1>0, 255, 0)
-                img3 = dilution[bi][3].numpy()
+                img3 = dilution[bi][S-1].numpy()
                 # img3 = img3 / np.max(img3)
                 # img3 = np.where(img3>0, 255, 0)
                 fig0.imshow(img0, cmap='gray', vmin=0, vmax=1)
@@ -121,23 +119,24 @@ class Classifier(nn.Module):
                  voxel_dimension=(180,240),  # dimension of voxel will be C x 2 x H x W
                  crop_dimension=(224, 224),  # dimension of crop before it goes into classifier
                  num_classes=101,
-                 mlp_layers=[1, 30, 30, 1],
-                 activation=nn.LeakyReLU(negative_slope=0.1),
                  pretrained=True):
 
         nn.Module.__init__(self)
-        self.quantization_layer = QuantizationLayer(voxel_dimension, mlp_layers, activation)
+        self.quantization_layer = QuantizationLayer(voxel_dimension)
         self.crop_dimension = crop_dimension
 
         use_resnet = True
-
+        use_wide_resnet = False
         if use_resnet:
-            self.classifier = resnet34(pretrained=pretrained)
+            if use_wide_resnet:
+                self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'wide_resnet50_2', pretrained=pretrained)
+            else:
+                self.classifier = resnet34(pretrained=pretrained)
             # replace fc layer and first convolutional layer
             self.classifier.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.classifier.fc = nn.Linear(self.classifier.fc.in_features, num_classes)
         else:
-            self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'densenet121', pretrained=True)
+            self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'densenet121', pretrained=pretrained)
             self.classifier.features.conv0 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.classifier.classifier = nn.Linear(self.classifier.classifier.in_features, num_classes)
 
