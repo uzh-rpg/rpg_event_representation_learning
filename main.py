@@ -16,6 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 from utils.loader import Loader
 from utils.loss import cross_entropy_loss_and_accuracy
 from utils.dataset import NCaltech101
+from utils.adabound import AdaBound
 
 torch.manual_seed(1)
 np.random.seed(1)
@@ -98,7 +99,11 @@ if __name__ == '__main__':
     model = model.to(flags.device)
 
     # optimizer and lr scheduler
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    use_adabound = True
+    if use_adabound:
+        optimizer = AdaBound(model.parameters(), lr=1e-3, final_lr=0.1)
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.5)
 
     #writer = SummaryWriter(flags.log_dir)
