@@ -123,22 +123,47 @@ class Classifier(nn.Module):
 
         nn.Module.__init__(self)
         self.quantization_layer = QuantizationLayer(voxel_dimension)
+        crop_dimension = (112, 112)
+        pretrained = False
         self.crop_dimension = crop_dimension
 
         use_resnet = True
         use_wide_resnet = False
         if use_resnet:
+            self.modelChildren = ['avgpool', 'layer4', 'layer3', 'layer2', 'layer1', 'maxpool', 'relu', 'bn1']
             if use_wide_resnet:
                 self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'wide_resnet50_2', pretrained=pretrained)
             else:
                 self.classifier = resnet34(pretrained=pretrained)
+            
             # replace fc layer and first convolutional layer
             self.classifier.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.classifier.fc = nn.Linear(self.classifier.fc.in_features, num_classes)
         else:
-            self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'densenet121', pretrained=pretrained)
+            self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'densenet201', pretrained=pretrained)
             self.classifier.features.conv0 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.classifier.classifier = nn.Linear(self.classifier.classifier.in_features, num_classes)
+
+    def freezeUnfreeze(self):
+        unfreeze_list = self.modelChildren[:1] + ['conv1', 'fc']
+        print(unfreeze_list)
+        try:
+            self.modelChildren.pop(0)
+            for name, child in self.classifier.named_children():
+                if name in unfreeze_list:
+                    print(name + ' is unfrozen | ', end='')
+                    for param in child.parameters():
+                        param.requires_grad = True
+                else:
+                    print(name + ' is frozen | ', end='')
+                    for param in child.parameters():
+                        param.requires_grad = False
+        except:
+            for name, child in self.classifier.named_children():
+                print(name + ' is unfrozen | ', end='')
+                for param in child.parameters():
+                    param.requires_grad = True
+        print()
 
     def crop_and_resize_to_resolution(self, x, output_resolution=(224, 224)):
         B, C, H, W = x.shape

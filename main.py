@@ -16,7 +16,6 @@ from torch.utils.tensorboard import SummaryWriter
 from utils.loader import Loader
 from utils.loss import cross_entropy_loss_and_accuracy
 from utils.dataset import NCaltech101
-from utils.adabound import AdaBound
 
 torch.manual_seed(1)
 np.random.seed(1)
@@ -99,12 +98,12 @@ if __name__ == '__main__':
     model = model.to(flags.device)
 
     # optimizer and lr scheduler
-    use_adabound = True
-    if use_adabound:
-        optimizer = AdaBound(model.parameters(), lr=1e-3, final_lr=0.1)
+    use_sgd = False
+    if use_sgd:
+        optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-4, momentum=0.9, weight_decay=1e-5)
     else:
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.5)
+        lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.5)
 
     #writer = SummaryWriter(flags.log_dir)
 
@@ -177,8 +176,12 @@ if __name__ == '__main__':
 
             iteration += 1
 
-        if i % 10 == 9:
+        if i % 6 == 5:
             lr_scheduler.step()
+        if i % 24 == 23:
+            for g in optimizer.param_groups:
+                g['lr'] = 1e-4
+            model.freezeUnfreeze()
 
         training_loss = sum_loss.item() / len(training_loader)
         training_accuracy = sum_accuracy.item() / len(training_loader)
