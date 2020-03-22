@@ -1,26 +1,36 @@
+import math
 import numpy as np
 from os import listdir
 from os.path import join
+import random
 
 def random_shift_events(events, max_shift=20, resolution=(180, 240)):
     H, W = resolution
-    shifted_events = np.copy(events)
-    
     x_shift, y_shift = np.random.randint(-max_shift, max_shift+1, size=(2,))
-    shifted_events[:,0] += x_shift
-    shifted_events[:,1] += y_shift
+    events[:,0] += x_shift
+    events[:,1] += y_shift
 
-    valid_events = (shifted_events[:,0] >= 0) & (shifted_events[:,0] < W) & (shifted_events[:,1] >= 0) & (shifted_events[:,1] < H)
-    shifted_events = shifted_events[valid_events]
+    # Want to rotate events, not done
+    # max_rad = 0.18
+    # x, y, t, p = events.T
+    # x_old = x.copy() - W//2
+    # y_old = y.copy() - H//2
+    # rotate_rad = ( random.random()-0.5)*max_rad
+    # print(rotate_rad)
+    # x = x_old*math.cos(rotate_rad) + y_old*math.sin(rotate_rad) + W//2
+    # y = -1*x_old*math.sin(rotate_rad) + y_old*math.cos(rotate_rad) + H//2
+    # events = np.stack( (x, y, t, p), axis=1)
 
-    return shifted_events
+    valid_events = (events[:,0] >= 0) & (events[:,0] < W) & (events[:,1] >= 0) & (events[:,1] < H)
+    events = events[valid_events]
+
+    return events
 
 def random_flip_events_along_x(events, resolution=(180, 240), p=0.5):
     H, W = resolution
     if np.random.random() < p:
         events[:,0] = W - 1 - events[:,0]
     return events
-
 
 class NCaltech101:
     def __init__(self, root, augmentation=False):
