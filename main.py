@@ -111,55 +111,56 @@ if __name__ == '__main__':
     min_validation_loss = 1000
 
     for i in range(flags.num_epochs):
+        if i % 5 == 4:
+            sum_accuracy = 0
+            sum_loss = 0
+            model = model.eval()
+            model.setMode(1)
+            print(f"Validation step [{i:3d}/{flags.num_epochs:3d}]")
+            for events, labels in tqdm.tqdm(validation_loader):
+
+                with torch.no_grad():
+                    pred_labels, representation = model(events)
+                    loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
+
+                sum_accuracy += accuracy
+                sum_loss += loss
+
+            validation_loss = sum_loss.item() / len(validation_loader)
+            validation_accuracy = sum_accuracy.item() / len(validation_loader)
+
+            #writer.add_scalar("validation/accuracy", validation_accuracy, iteration)
+            #writer.add_scalar("validation/loss", validation_loss, iteration)
+
+            # visualize representation
+            #representation_vizualization = create_image(representation)
+            #writer.add_image("validation/representation", representation_vizualization, iteration)
+
+            print(f"Validation Loss {validation_loss:.4f}  Accuracy {validation_accuracy:.4f}")
+
+            if validation_loss < min_validation_loss:
+                min_validation_loss = validation_loss
+                state_dict = model.state_dict()
+
+                torch.save({
+                    "state_dict": state_dict,
+                    "min_val_loss": min_validation_loss,
+                    "iteration": iteration
+                }, "log/model_best.pth")
+                print("New best at ", validation_loss)
+
+            if i % flags.save_every_n_epochs == 0:
+                state_dict = model.state_dict()
+                torch.save({
+                    "state_dict": state_dict,
+                    "min_val_loss": min_validation_loss,
+                    "iteration": iteration
+                }, "log/checkpoint_%05d_%.4f.pth" % (iteration, min_validation_loss))
+
         sum_accuracy = 0
         sum_loss = 0
-        model = model.eval()
-
-        print(f"Validation step [{i:3d}/{flags.num_epochs:3d}]")
-        for events, labels in tqdm.tqdm(validation_loader):
-
-            with torch.no_grad():
-                pred_labels, representation = model(events)
-                loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
-
-            sum_accuracy += accuracy
-            sum_loss += loss
-
-        validation_loss = sum_loss.item() / len(validation_loader)
-        validation_accuracy = sum_accuracy.item() / len(validation_loader)
-
-        #writer.add_scalar("validation/accuracy", validation_accuracy, iteration)
-        #writer.add_scalar("validation/loss", validation_loss, iteration)
-
-        # visualize representation
-        #representation_vizualization = create_image(representation)
-        #writer.add_image("validation/representation", representation_vizualization, iteration)
-
-        print(f"Validation Loss {validation_loss:.4f}  Accuracy {validation_accuracy:.4f}")
-
-        if validation_loss < min_validation_loss:
-            min_validation_loss = validation_loss
-            state_dict = model.state_dict()
-
-            torch.save({
-                "state_dict": state_dict,
-                "min_val_loss": min_validation_loss,
-                "iteration": iteration
-            }, "log/model_best.pth")
-            print("New best at ", validation_loss)
-
-        if i % flags.save_every_n_epochs == 0:
-            state_dict = model.state_dict()
-            torch.save({
-                "state_dict": state_dict,
-                "min_val_loss": min_validation_loss,
-                "iteration": iteration
-            }, "log/checkpoint_%05d_%.4f.pth" % (iteration, min_validation_loss))
-
-        sum_accuracy = 0
-        sum_loss = 0
-
         model = model.train()
+        model.setMode(0)
         print(f"Training step [{i:3d}/{flags.num_epochs:3d}]")
         for events, labels in tqdm.tqdm(training_loader):
             optimizer.zero_grad()

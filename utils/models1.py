@@ -122,6 +122,7 @@ class Classifier(nn.Module):
                  pretrained=True):
 
         nn.Module.__init__(self)
+        self.mode = 0 # 0:Training 1:Validation 
         self.quantization_layer = QuantizationLayer(voxel_dimension)
         self.crop_dimension = crop_dimension
 
@@ -133,7 +134,6 @@ class Classifier(nn.Module):
                 self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'wide_resnet50_2', pretrained=pretrained)
             else:
                 self.classifier = resnet34(pretrained=pretrained)
-            
             # replace fc layer and first convolutional layer
             self.classifier.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.classifier.fc = nn.Linear(self.classifier.fc.in_features, num_classes)
@@ -141,6 +141,9 @@ class Classifier(nn.Module):
             self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'densenet201', pretrained=pretrained)
             self.classifier.features.conv0 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.classifier.classifier = nn.Linear(self.classifier.classifier.in_features, num_classes)
+
+    def setMode(self, mode):
+        self.mode = mode
 
     def freezeUnfreeze(self):
         unfreeze_list = self.modelChildren[:1] + ['conv1', 'fc']
