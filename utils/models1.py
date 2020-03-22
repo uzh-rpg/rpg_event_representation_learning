@@ -123,8 +123,6 @@ class Classifier(nn.Module):
 
         nn.Module.__init__(self)
         self.quantization_layer = QuantizationLayer(voxel_dimension)
-        crop_dimension = (112, 112)
-        pretrained = False
         self.crop_dimension = crop_dimension
 
         use_resnet = True
