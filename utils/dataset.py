@@ -12,8 +12,8 @@ def random_shift_rotate_scale_events(events, max_shift=20, max_rad=0.1745, resol
     y_old = y.copy() - H//2
     rotate_rad = ( random.random()-0.5)*2*max_rad
     scale = random.random()/5 + 0.85
-    x = ( x_old*math.cos(rotate_rad) + y_old*math.sin(rotate_rad)) * scale + W//2
-    y = -1*x_old*math.sin(rotate_rad) + y_old*math.cos(rotate_rad) * scale + H//2
+    x = ( x_old*np.cos(rotate_rad) + y_old*np.sin(rotate_rad)) * scale + W//2
+    y = -1*x_old*np.sin(rotate_rad) + y_old*np.cos(rotate_rad) * scale + H//2
     x = np.rint(x)
     y = np.rint(y)
     events = np.stack( (x, y, t, p), axis=1)
