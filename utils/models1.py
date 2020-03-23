@@ -93,7 +93,7 @@ class QuantizationLayer(nn.Module):
             padding = pad(x_diff_from_center) + pad(y_diff_from_center)
             for i in range(3):
                 padded = F.pad(concentrate[bi][i], padding)
-                concentrate[bi][i] = padded[:H,:W]
+                concentrate[bi][i] = padded[padding[3]:H+padding[3],padding[1]:W+padding[1]]
 
         if DEBUG==9:
             dilution = dilution.permute(1,0,2,3)

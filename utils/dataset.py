@@ -4,22 +4,23 @@ from os import listdir
 from os.path import join
 import random
 
-def random_shift_events(events, max_shift=20, resolution=(180, 240)):
+def random_shift_rotate_scale_events(events, max_shift=20, max_rad=0.1745, resolution=(180, 240)):
     H, W = resolution
+
+    x, y, t, p = events.T
+    x_old = x.copy() - W//2
+    y_old = y.copy() - H//2
+    rotate_rad = ( random.random()-0.5)*2*max_rad
+    scale = random.random()/5 + 0.85
+    x = ( x_old*math.cos(rotate_rad) + y_old*math.sin(rotate_rad)) * scale + W//2
+    y = -1*x_old*math.sin(rotate_rad) + y_old*math.cos(rotate_rad) * scale + H//2
+    x = np.rint(x)
+    y = np.rint(y)
+    events = np.stack( (x, y, t, p), axis=1)
+
     x_shift, y_shift = np.random.randint(-max_shift, max_shift+1, size=(2,))
     events[:,0] += x_shift
     events[:,1] += y_shift
-
-    # Want to rotate events, not done
-    # max_rad = 0.18
-    # x, y, t, p = events.T
-    # x_old = x.copy() - W//2
-    # y_old = y.copy() - H//2
-    # rotate_rad = ( random.random()-0.5)*max_rad
-    # print(rotate_rad)
-    # x = x_old*math.cos(rotate_rad) + y_old*math.sin(rotate_rad) + W//2
-    # y = -1*x_old*math.sin(rotate_rad) + y_old*math.cos(rotate_rad) + H//2
-    # events = np.stack( (x, y, t, p), axis=1)
 
     valid_events = (events[:,0] >= 0) & (events[:,0] < W) & (events[:,1] >= 0) & (events[:,1] < H)
     events = events[valid_events]
@@ -60,7 +61,7 @@ class NCaltech101:
         events = np.load(f).astype(np.float32)
 
         if self.augmentation:
-            events = random_shift_events(events)
+            events = random_shift_rotate_scale_events(events)
             events = random_flip_events_along_x(events)
 
         return events, label
