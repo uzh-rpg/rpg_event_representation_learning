@@ -112,7 +112,7 @@ class QuantizationLayer(nn.Module):
                 img2 = concentrate[bi][2].numpy()
                 # img2 = img2 / np.max(img2)
                 # img2 = np.where(img1>0, 255, 0)
-                img3 = dilution[bi][S-2].numpy()
+                img3 = dilution[bi][S//2].numpy()
                 # img3 = img3 / np.max(img3)
                 # img3 = np.where(img3>0, 255, 0)
                 fig0.imshow(img0, cmap='gray', vmin=0, vmax=10)

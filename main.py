@@ -177,12 +177,12 @@ if __name__ == '__main__':
 
             iteration += 1
 
-        if i % 6 == 5:
+        if i % 10 == 9:
             lr_scheduler.step()
-        if i % 24 == 23:
-            for g in optimizer.param_groups:
-                g['lr'] = 1e-4
-            model.freezeUnfreeze()
+        # if i % 24 == 23:
+        #     for g in optimizer.param_groups:
+        #         g['lr'] = 1e-4
+        #     model.freezeUnfreeze()
 
         training_loss = sum_loss.item() / len(training_loader)
         training_accuracy = sum_accuracy.item() / len(training_loader)
