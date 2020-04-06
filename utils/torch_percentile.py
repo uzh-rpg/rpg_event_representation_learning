@@ -25,3 +25,17 @@ def percentile(t: torch.tensor, q: float) -> Union[int, float]:
     k = 1 + round(.01 * float(q) * (t.numel() - 1))
     result = t.view(-1).kthvalue(k).values.item()
     return result
+
+if __name__ == "__main__":
+    
+    q_s = np.r_[0, 100 * np.random.uniform(size=8), 100.]
+    
+    a = np.random.uniform(size=(3, 4, 5))
+    t = torch.from_numpy(a)
+    
+    for q in q_s:
+        p_t = percentile(t, q)
+        p_a = np.percentile(a, q, interpolation="nearest")
+        print("q={}, PyTorch result: {}".format(q, p_t))
+        print("q={}, NumPy result:   {}".format(q, p_a))
+        assert p_t == p_a

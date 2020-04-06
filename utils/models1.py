@@ -13,6 +13,7 @@ DEBUG = 0
 
 if DEBUG>0:
     import matplotlib.pyplot as plt
+    import sys
     import time
 
 def phase_correlation(a, b):
@@ -58,6 +59,11 @@ class QuantizationLayer(nn.Module):
         self.device = device
         self.k_noise = 2
         self.startIdx = 2
+        self.blurFilterKernel = torch.tensor([[[
+                                    .0625, .0625, .0625, 
+                                    .0625, .5, .0625,
+                                    .0625, .0625, .0625
+                                ]]])
 
     def setMode(self, mode):
         self.mode = mode
@@ -70,53 +76,52 @@ class QuantizationLayer(nn.Module):
         # obtain the height & width
         H, W = self.dim
 
+        # obtain class instance variables
+        device = self.device
+        blurFilt = self.blurFilterKernel.expand(1, B, -1)
+        blurFilt = blurFilt.view(B, 1, 3, 3).to(device)
+
         num_alongX = int( S * W * B)
         num_alongY = int( S * H * B)
-        alongX = torch.zeros(num_alongX, dtype=torch.int32, device=self.device)
-        alongY = torch.zeros(num_alongY, dtype=torch.int32, device=self.device)
+        alongX = torch.zeros(num_alongX, dtype=torch.int32, device=device)
+        alongY = torch.zeros(num_alongY, dtype=torch.int32, device=device)
         segmentLen_batch = []
         for bi in range(B):
-            events[bi] = torch.from_numpy(events[bi]).to(self.device).squeeze(0)
+            events[bi] = torch.from_numpy(events[bi]).to(device).squeeze(0)
             x, y, t, p, b = events[bi].t()
             segmentLen = len(x)//S
             segmentLen_batch.append(segmentLen)
-            chunks = torch.arange(S, dtype=torch.int32, device=self.device)
+            chunks = torch.arange(S, dtype=torch.int32, device=device)
             chunks = chunks.unsqueeze(-1).expand(-1, segmentLen).reshape(-1)
             resultLen = len(chunks)
             ix = x[:resultLen] + W*chunks + W*S*bi
             iy = y[:resultLen] + H*chunks + H*S*bi
-            ones = torch.ones(resultLen, dtype=torch.int32, device=self.device)
+            ones = torch.ones(resultLen, dtype=torch.int32, device=device)
             alongX.put_(ix.long(), ones, accumulate=True)
             alongY.put_(iy.long(), ones, accumulate=True)
 
-        segmentLen_batch = torch.FloatTensor(segmentLen_batch).to(self.device)
+        segmentLen_batch = torch.FloatTensor(segmentLen_batch).to(device)
 
-        alongX = alongX.view(-1, S*W)
-        noise_loc = torch.topk(alongX, self.k_noise, dim=-1, largest=True)[1]
-        noise_loc = torch.cat(((noise_loc / W).view(-1, 1), (noise_loc % W).view(-1, 1)), dim=1)
-        noise_loc = noise_loc.view(-1, self.k_noise, 2)
-        alongX = alongX.view(-1, S, W)
-        for bi in range(B):
-            for nx in noise_loc[bi, :, 1]:
-                alongX[bi, :, nx] = 0.
-        alongDim = torch.arange(W, dtype=torch.float32, device=self.device)
+        alongX = alongX.view(-1, S, W).unsqueeze(dim=0)
+        clampVal = percentile(alongX, 99.5)
+        alongX = torch.clamp(alongX, 0, clampVal).float()
+        alongX = F.conv2d(alongX, blurFilt, padding=1, groups=B)
+        alongX = alongX.squeeze()
+        alongDim = torch.arange(W, dtype=torch.float32, device=device)
         alongDim = alongDim.expand(B, -1).unsqueeze(-1)
-        meanX = torch.bmm(alongX.float(), alongDim).squeeze(-1) / segmentLen_batch.view(-1,1)
+        meanX = torch.bmm(alongX, alongDim).squeeze(-1) / segmentLen_batch.view(-1,1)
         start_seg_x = meanX[:, self.startIdx].unsqueeze(-1)
         alignedX = meanX - start_seg_x
         alignedX = alignedX.round().int()
 
-        alongY = alongY.view(-1, S*H)
-        noise_loc = torch.topk(alongY, self.k_noise, dim=-1, largest=True)[1]
-        noise_loc = torch.cat(((noise_loc / H).view(-1, 1), (noise_loc % H).view(-1, 1)), dim=1)
-        noise_loc = noise_loc.view(-1, self.k_noise, 2)
-        alongY = alongY.view(-1, S, H)
-        for bi in range(B):
-            for ny in noise_loc[bi, :, 1]:
-                alongY[bi, :, ny] = 0.
-        alongDim = torch.arange(H, dtype=torch.float32, device=self.device)
+        alongY = alongY.view(-1, S, H).unsqueeze(dim=0)
+        clampVal = percentile(alongY, 99.5)
+        alongY = torch.clamp(alongY, 0, clampVal).float()
+        alongY = F.conv2d(alongY, blurFilt, padding=1, groups=B)
+        alongY = alongY.squeeze()
+        alongDim = torch.arange(H, dtype=torch.float32, device=device)
         alongDim = alongDim.expand(B, -1).unsqueeze(-1)
-        meanY = torch.bmm(alongY.float(), alongDim).squeeze(-1) / segmentLen_batch.view(-1,1)
+        meanY = torch.bmm(alongY, alongDim).squeeze(-1) / segmentLen_batch.view(-1,1)
         start_seg_y = meanY[:, self.startIdx].unsqueeze(-1)
         alignedY = meanY - start_seg_y
         alignedY = alignedY.round().int()
@@ -142,11 +147,11 @@ class QuantizationLayer(nn.Module):
             idx_in_verifier = (x//2) + (W//2)*(y//2)
             idx_in_verifier = idx_in_verifier.long()
             idx_in_verifier = torch.chunk(idx_in_verifier, S)
-            ones = torch.ones(segmentLen, dtype=torch.int32, device=self.device)
-            onesBool = torch.ones(segmentLen, dtype=torch.bool, device=self.device)
-            container = torch.zeros(W*H, dtype=torch.int32, device=self.device)
+            ones = torch.ones(segmentLen, dtype=torch.int32, device=device)
+            onesBool = torch.ones(segmentLen, dtype=torch.bool, device=device)
+            container = torch.zeros(W*H, dtype=torch.int32, device=device)
             container.put_(idx_in_container[self.startIdx], ones, accumulate=True)
-            verifier_old = torch.zeros( (W//2)*(H//2), dtype=torch.bool, device=self.device)
+            verifier_old = torch.zeros( (W//2)*(H//2), dtype=torch.bool, device=device)
             verifier_old.put_(idx_in_verifier[self.startIdx], onesBool, accumulate=False)
             for si in range(self.startIdx+1, S):
                 verifier_new = verifier_old.detach().clone()
@@ -175,7 +180,7 @@ class QuantizationLayer(nn.Module):
         containers = containers.unsqueeze(dim=1)
 
         if DEBUG==9:
-            container_img = containers.numpy()
+            container_img = containers.cpu().numpy()
             for bi in range(B):
                 fig = plt.figure(figsize=(15,15))
                 ax = []
@@ -183,19 +188,18 @@ class QuantizationLayer(nn.Module):
                 columns = 1
                 for i in range(rows * columns):
                     ax.append( fig.add_subplot(rows, columns, i+1))
-                    if i==0:
+                    if i==2:
                         ax[-1].set_title('x-y graph')
                         plt.imshow(container_img[bi][0], cmap='gray', vmin=0, vmax=4)
-                    elif i==1:
+                    elif i==0:
                         ax[-1].set_title('x-t graph')
                         plt.imshow(alongX[bi], cmap='gray', vmin=0, vmax=80)
-                    elif i==2:
+                    elif i==1:
                         ax[-1].set_title('y-t graph')
                         plt.imshow(alongY[bi], cmap='gray', vmin=0, vmax=80)
                 plt.tight_layout()
                 plt.show()
-            while True:
-                pass
+            sys.exit(0)
 
         vox = containers
 
