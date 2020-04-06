@@ -16,19 +16,19 @@ if DEBUG>0:
     import time
 
 def phase_correlation(a, b):
-        B, H, W = a.size()
-        a = a.unsqueeze(dim=-1).expand(B, H, W, 2)
-        b = b.unsqueeze(dim=-1).expand(B, H, W, 2)
-        G_a = torch.fft(a, signal_ndim=2)
-        G_b = torch.fft(b, signal_ndim=2)
-        conj_b = torch.conj(G_b)
-        R = G_a * conj_b
-        R /= torch.abs(R)
-        r = torch.ifft(R, signal_ndim=2)
-        r = torch.split(r, 1, dim=-1)[0].squeeze(-1)
-        shift = r.view(B, -1).argmax(dim=1)
-        shift = torch.cat(((shift / W).view(-1, 1), (shift % W).view(-1, 1)), dim=1)
-        return shift
+    B, H, W = a.size()
+    a = a.unsqueeze(dim=-1).expand(B, H, W, 2)
+    b = b.unsqueeze(dim=-1).expand(B, H, W, 2)
+    G_a = torch.fft(a, signal_ndim=2)
+    G_b = torch.fft(b, signal_ndim=2)
+    conj_b = torch.conj(G_b)
+    R = G_a * conj_b
+    R /= torch.abs(R)
+    r = torch.ifft(R, signal_ndim=2)
+    r = torch.split(r, 1, dim=-1)[0].squeeze(-1)
+    shift = r.view(B, -1).argmax(dim=1)
+    shift = torch.cat(((shift / W).view(-1, 1), (shift % W).view(-1, 1)), dim=1)
+    return shift
 
 def fftshift(image):
     # Original with size (B, H, W, 2)

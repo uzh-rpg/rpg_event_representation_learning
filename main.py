@@ -1,21 +1,21 @@
+DEBUG = 8
+
 import argparse
+import numpy as np
+import os
 from os.path import dirname
 import torch
 import torchvision
-import os
-import numpy as np
+from torch.utils.tensorboard import SummaryWriter
 import tqdm
-
-DEBUG = 8
 
 if DEBUG>0:
     from utils.models1 import Classifier
 else:
     from utils.models import Classifier
-from torch.utils.tensorboard import SummaryWriter
-from utils.loader import Loader
-from utils.loss import cross_entropy_loss_and_accuracy
 from utils.dataset import NCaltech101
+from utils.loader import Loader
+from utils.train_eval import train_one_epoch, eval_one_epoch
 
 if DEBUG==9:
     torch.manual_seed(1)
@@ -87,27 +87,20 @@ if __name__ == '__main__':
     min_validation_loss = 1000
 
     for i in range(flags.num_epochs):
-        if i % 5 == 4:
-            sum_accuracy = 0
-            sum_loss = 0
-            model = model.eval()
-            model.setMode(1)
+        
+        print(f"Training step [{i:3d}/{flags.num_epochs:3d}]")
+        training_loss, training_accuracy, iteration = train_one_epoch(model, flags.device, optimizer, training_loader, iteration)
+        print(f"Training Iteration {iteration:5d}  Loss {training_loss:.4f}  Accuracy {training_accuracy:.4f}")
+
+        if i%10 == 9:
+            if optimizerSelect == 'adam':
+                lr_scheduler.step()
+
+        if i%5 == 0:
             print(f"Validation step [{i:3d}/{flags.num_epochs:3d}]")
-            for events, labels in tqdm.tqdm(validation_loader):
-                labels = labels.to(flags.device)
-                
-                with torch.no_grad():
-                    pred_labels, representation = model(events)
-                    loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
-
-                sum_accuracy += accuracy
-                sum_loss += loss
-
-            validation_loss = sum_loss.item() / len(validation_loader)
-            validation_accuracy = sum_accuracy.item() / len(validation_loader)
-
+            validation_loss, validation_accuracy = eval_one_epoch(model, flags.device, validation_loader)
             print(f"Validation Loss {validation_loss:.4f}  Accuracy {validation_accuracy:.4f}")
-
+        
             if validation_loss < min_validation_loss:
                 min_validation_loss = validation_loss
                 state_dict = model.state_dict()
@@ -124,36 +117,3 @@ if __name__ == '__main__':
                     "min_val_loss": min_validation_loss,
                     "iteration": iteration
                 }, "log/checkpoint_%05d_%.4f.pth" % (iteration, min_validation_loss))
-
-        sum_accuracy = 0
-        sum_loss = 0
-        model = model.train()
-        model.setMode(0)
-        print(f"Training step [{i:3d}/{flags.num_epochs:3d}]")
-        for events, labels in tqdm.tqdm(training_loader):
-            labels = labels.to(flags.device)
-            
-            optimizer.zero_grad()
-
-            pred_labels, representation = model(events)
-            loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
-
-            loss.backward()
-
-            optimizer.step()
-
-            sum_accuracy += accuracy
-            sum_loss += loss
-
-            iteration += 1
-
-        if i % 10 == 9:
-            lr_scheduler.step()
-        # if i % 24 == 23:
-        #     for g in optimizer.param_groups:
-        #         g['lr'] = 1e-4
-        #     model.freezeUnfreeze()
-
-        training_loss = sum_loss.item() / len(training_loader)
-        training_accuracy = sum_accuracy.item() / len(training_loader)
-        print(f"Training Iteration {iteration:5d}  Loss {training_loss:.4f}  Accuracy {training_accuracy:.4f}")
