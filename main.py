@@ -17,8 +17,9 @@ from utils.loader import Loader
 from utils.loss import cross_entropy_loss_and_accuracy
 from utils.dataset import NCaltech101
 
-torch.manual_seed(1)
-np.random.seed(1)
+if DEBUG==9:
+    torch.manual_seed(1)
+    np.random.seed(1)
 
 def FLAGS():
     parser = argparse.ArgumentParser("""Train classifier using a learnt quantization layer.""")
@@ -59,29 +60,6 @@ def FLAGS():
 
     return flags
 
-def percentile(t, q):
-    B, C, H, W = t.shape
-    k = 1 + round(.01 * float(q) * (C * H * W - 1))
-    result = t.view(B, -1).kthvalue(k).values
-    return result[:,None,None,None]
-
-def create_image(representation):
-    # B, C, H, W = representation.shape
-    # representation = representation.view(B, 3, C // 3, H, W).sum(2)
-
-    # do robust min max norm
-    representation = representation.detach().cpu()
-    robust_max_vals = percentile(representation, 99)
-    robust_min_vals = percentile(representation, 1)
-
-    representation = (representation - robust_min_vals)/(robust_max_vals - robust_min_vals)
-    representation = torch.clamp(255*representation, 0, 255).byte()
-
-    representation = torchvision.utils.make_grid(representation)
-
-    return representation
-
-
 if __name__ == '__main__':
     flags = FLAGS()
 
@@ -94,18 +72,16 @@ if __name__ == '__main__':
     validation_loader = Loader(validation_dataset, flags, device=flags.device)
 
     # model, and put to device
-    model = Classifier()
+    model = Classifier(device=flags.device)
     model = model.to(flags.device)
 
     # optimizer and lr scheduler
-    use_sgd = False
-    if use_sgd:
+    optimizerSelect = 'adam'
+    if optimizerSelect == 'sgd':
         optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-4, momentum=0.9, weight_decay=1e-5)
-    else:
+    elif optimizerSelect == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
         lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.5)
-
-    #writer = SummaryWriter(flags.log_dir)
 
     iteration = 0
     min_validation_loss = 1000
@@ -118,7 +94,8 @@ if __name__ == '__main__':
             model.setMode(1)
             print(f"Validation step [{i:3d}/{flags.num_epochs:3d}]")
             for events, labels in tqdm.tqdm(validation_loader):
-
+                labels = labels.to(flags.device)
+                
                 with torch.no_grad():
                     pred_labels, representation = model(events)
                     loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
@@ -129,26 +106,17 @@ if __name__ == '__main__':
             validation_loss = sum_loss.item() / len(validation_loader)
             validation_accuracy = sum_accuracy.item() / len(validation_loader)
 
-            #writer.add_scalar("validation/accuracy", validation_accuracy, iteration)
-            #writer.add_scalar("validation/loss", validation_loss, iteration)
-
-            # visualize representation
-            #representation_vizualization = create_image(representation)
-            #writer.add_image("validation/representation", representation_vizualization, iteration)
-
             print(f"Validation Loss {validation_loss:.4f}  Accuracy {validation_accuracy:.4f}")
 
             if validation_loss < min_validation_loss:
                 min_validation_loss = validation_loss
                 state_dict = model.state_dict()
-
                 torch.save({
                     "state_dict": state_dict,
                     "min_val_loss": min_validation_loss,
                     "iteration": iteration
                 }, "log/model_best.pth")
                 print("New best at ", validation_loss)
-
             if i % flags.save_every_n_epochs == 0:
                 state_dict = model.state_dict()
                 torch.save({
@@ -163,6 +131,8 @@ if __name__ == '__main__':
         model.setMode(0)
         print(f"Training step [{i:3d}/{flags.num_epochs:3d}]")
         for events, labels in tqdm.tqdm(training_loader):
+            labels = labels.to(flags.device)
+            
             optimizer.zero_grad()
 
             pred_labels, representation = model(events)
@@ -187,9 +157,3 @@ if __name__ == '__main__':
         training_loss = sum_loss.item() / len(training_loader)
         training_accuracy = sum_accuracy.item() / len(training_loader)
         print(f"Training Iteration {iteration:5d}  Loss {training_loss:.4f}  Accuracy {training_accuracy:.4f}")
-
-        #writer.add_scalar("training/accuracy", training_accuracy, iteration)
-        #writer.add_scalar("training/loss", training_loss, iteration)
-
-        #representation_vizualization = create_image(representation)
-        #writer.add_image("training/representation", representation_vizualization, iteration)

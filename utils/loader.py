@@ -15,7 +15,6 @@ class Loader:
 
     def __iter__(self):
         for data in self.loader:
-            data = [d.to(self.device) for d in data]
             yield data
 
     def __len__(self):
@@ -28,7 +27,7 @@ def collate_events(data):
     for i, d in enumerate(data):
         labels.append(d[1])
         ev = np.concatenate([d[0], i*np.ones((len(d[0]),1), dtype=np.float32)],1)
+        ev = np.expand_dims(ev, axis=0)
         events.append(ev)
-    events = torch.from_numpy(np.concatenate(events,0))
     labels = default_collate(labels)
     return events, labels
