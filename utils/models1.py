@@ -102,28 +102,40 @@ class QuantizationLayer(nn.Module):
 
         segmentLen_batch = torch.FloatTensor(segmentLen_batch).to(device)
 
-        alongX = alongX.view(-1, S, W).unsqueeze(dim=0)
-        clampVal = percentile(alongX, 99.5)
-        alongX = torch.clamp(alongX, 0, clampVal).float()
+        alongX = alongX.view(-1, S*W).float()
+        mean = alongX.mean(dim=-1)
+        std = alongX.std(dim=-1)
+        clampVal = mean + 3*std
+        for bi in range(B):
+            alongX[bi] = torch.clamp(alongX[bi], 0, clampVal[bi])
+        alongX = alongX.view(1, -1, S, W)
         alongX = F.conv2d(alongX, blurFilt, padding=1, groups=B)
         alongX = alongX.squeeze()
         alongDim = torch.arange(W, dtype=torch.float32, device=device)
         alongDim = alongDim.expand(B, -1).unsqueeze(-1)
         meanX = torch.bmm(alongX, alongDim).squeeze(-1) / segmentLen_batch.view(-1,1)
         start_seg_x = meanX[:, self.startIdx].unsqueeze(-1)
-        alignedX = meanX - start_seg_x
+        start_seg_x_dis_to_center = W//2 - start_seg_x
+        # align abd centralize the image along x-axis
+        alignedX = meanX - start_seg_x - start_seg_x_dis_to_center
         alignedX = alignedX.round().int()
 
-        alongY = alongY.view(-1, S, H).unsqueeze(dim=0)
-        clampVal = percentile(alongY, 99.5)
-        alongY = torch.clamp(alongY, 0, clampVal).float()
+        alongY = alongY.view(-1, S*H).float()
+        mean = alongY.mean(dim=-1)
+        std = alongY.std(dim=-1)
+        clampVal = mean + 3*std
+        for bi in range(B):
+            alongY[bi] = torch.clamp(alongY[bi], 0, clampVal[bi])
+        alongY = alongY.view(1, -1, S, H)
         alongY = F.conv2d(alongY, blurFilt, padding=1, groups=B)
         alongY = alongY.squeeze()
         alongDim = torch.arange(H, dtype=torch.float32, device=device)
         alongDim = alongDim.expand(B, -1).unsqueeze(-1)
         meanY = torch.bmm(alongY, alongDim).squeeze(-1) / segmentLen_batch.view(-1,1)
         start_seg_y = meanY[:, self.startIdx].unsqueeze(-1)
-        alignedY = meanY - start_seg_y
+        start_seg_y_dis_to_center = H//2 - start_seg_y
+        # align abd centralize the image along y-axis
+        alignedY = meanY - start_seg_y - start_seg_y_dis_to_center
         alignedY = alignedY.round().int()
 
         container_batch = []
@@ -158,25 +170,12 @@ class QuantizationLayer(nn.Module):
                 verifier_new.put_(idx_in_verifier[si], onesBool, accumulate=False)
                 verifier_new_cnt = verifier_new.sum().float()
                 new_info_cnt = torch.logical_xor(verifier_new, verifier_old).sum().float()
-                if new_info_cnt/verifier_new_cnt < 0.1:
+                if new_info_cnt/verifier_new_cnt < 0.01:
                     break
                 container.put_(idx_in_container[si], ones, accumulate=True)
                 verifier_old = verifier_new
             container_batch.append(container)
         containers = torch.stack(container_batch).view(-1, H, W).float()
-
-        # centralize the image
-        pad = lambda n: (n, 0) if n>=0 else (0, -n)
-        for bi in range(B):
-            x, y, t, p, b = events[bi].t()
-            x_mean = torch.mean(x).item()
-            y_mean = torch.mean(y).item()
-            x_diff_from_center = int( math.floor(W//2 - x_mean))
-            y_diff_from_center = int( math.floor(H//2 - y_mean))
-            padding = pad(x_diff_from_center) + pad(y_diff_from_center)
-            padded = F.pad(containers[bi], padding)
-            containers[bi] = padded[padding[3]:H+padding[3],padding[1]:W+padding[1]]
-        
         containers = containers.unsqueeze(dim=1)
 
         if DEBUG==9:
