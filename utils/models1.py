@@ -1,55 +1,20 @@
 import math
-import random
-import torch.nn as nn
-from os.path import join, dirname, isfile
-import torch
-import torch.nn.functional as F
 import numpy as np
+from os.path import join, dirname, isfile
+import random
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from torchvision.models.resnet import resnet34
 import tqdm
-from .torch_percentile import percentile
+from .miscellaneous import outlier1d
 
-DEBUG = 0
+DEBUG = 9
 
 if DEBUG>0:
     import matplotlib.pyplot as plt
     import sys
     import time
-
-def phase_correlation(a, b):
-    B, H, W = a.size()
-    a = a.unsqueeze(dim=-1).expand(B, H, W, 2)
-    b = b.unsqueeze(dim=-1).expand(B, H, W, 2)
-    G_a = torch.fft(a, signal_ndim=2)
-    G_b = torch.fft(b, signal_ndim=2)
-    conj_b = torch.conj(G_b)
-    R = G_a * conj_b
-    R /= torch.abs(R)
-    r = torch.ifft(R, signal_ndim=2)
-    r = torch.split(r, 1, dim=-1)[0].squeeze(-1)
-    shift = r.view(B, -1).argmax(dim=1)
-    shift = torch.cat(((shift / W).view(-1, 1), (shift % W).view(-1, 1)), dim=1)
-    return shift
-
-def fftshift(image):
-    # Original with size (B, H, W, 2)
-    image = image.permute(3,0,1,2)
-    real, imag = image[0], image[1]
-    for dim in range(1, len(real.size())):
-        real = torch.fft.roll_n(real, axis=dim, n=real.size(dim)//2)
-        imag = torch.fft.roll_n(imag, axis=dim, n=imag.size(dim)//2)
-    image = torch.stack([real, imag], dim=0).permute(1,2,3,0)
-    return image
-
-def ifftshift(image):
-    # Original with size (B, H, W, 2)
-    image = image.permute(3,0,1,2)
-    real, imag = image[0], image[1]
-    for dim in range(len(real.size()) - 1, 0, -1):
-        real = fft.roll_n(real, axis=dim, n=real.size(dim)//2)
-        imag = fft.roll_n(imag, axis=dim, n=imag.size(dim)//2)
-    image = torch.stack([real, imag], dim=0).permute(1,2,3,0)
-    return image
 
 class QuantizationLayer(nn.Module):
     def __init__(self, dim, device):
@@ -57,13 +22,21 @@ class QuantizationLayer(nn.Module):
         self.dim = dim
         self.mode = 0 # 0:Training 1:Validation 
         self.device = device
-        self.k_noise = 2
-        self.startIdx = 2
+        self.startIdx = 4
+        self.endBias = 10
         self.blurFilterKernel = torch.tensor([[[
-                                    .0625, .0625, .0625, 
-                                    .0625, .5, .0625,
-                                    .0625, .0625, .0625
+                                    .03125, .03125, .01562, .03125, .03125,
+                                    .03125, .04406, .03125, .04406, .03125,
+                                    .04250, .06250, .14502, .06250, .04250,
+                                    .03125, .04406, .03125, .04406, .03125,
+                                    .03125, .03125, .01562, .03125, .03125
                                 ]]])
+        # self.blurFilterKernel = torch.tensor([[[
+        #                             .075, .05, .075,
+        #                             .150, .300, .150,
+        #                             .075, .05, .075
+        #                         ]]])
+        self.blurFilterKernelSize = int( math.sqrt( len(self.blurFilterKernel[0,0])))
 
     def setMode(self, mode):
         self.mode = mode
@@ -72,14 +45,18 @@ class QuantizationLayer(nn.Module):
         # points is a list, since events can have any size
         B = len(events)
         # separate events into S segments with evently-divided number of events
-        S = 32
+        S = 48
         # obtain the height & width
         H, W = self.dim
 
         # obtain class instance variables
         device = self.device
+        blurFiltSize = self.blurFilterKernelSize
+        blurFiltPad = blurFiltSize//2
         blurFilt = self.blurFilterKernel.expand(1, B, -1)
-        blurFilt = blurFilt.view(B, 1, 3, 3).to(device)
+        blurFilt = blurFilt.view(B, 1, blurFiltSize, blurFiltSize).to(device)
+        sIdx = self.startIdx
+        eIdx = S - self.endBias
 
         num_alongX = int( S * W * B)
         num_alongY = int( S * H * B)
@@ -102,42 +79,32 @@ class QuantizationLayer(nn.Module):
 
         segmentLen_batch = torch.FloatTensor(segmentLen_batch).to(device)
 
-        alongX = alongX.view(-1, S*W).float()
-        mean = alongX.mean(dim=-1)
-        std = alongX.std(dim=-1)
-        clampVal = mean + 3*std
-        for bi in range(B):
-            alongX[bi] = torch.clamp(alongX[bi], 0, clampVal[bi])
-        alongX = alongX.view(1, -1, S, W)
-        alongX = F.conv2d(alongX, blurFilt, padding=1, groups=B)
+        alongX = alongX.view(1, -1, S, W).float()
+        alongX = F.conv2d(alongX, blurFilt, padding=blurFiltPad, groups=B)
         alongX = alongX.squeeze()
         alongDim = torch.arange(W, dtype=torch.float32, device=device)
         alongDim = alongDim.expand(B, -1).unsqueeze(-1)
         meanX = torch.bmm(alongX, alongDim).squeeze(-1) / segmentLen_batch.view(-1,1)
-        start_seg_x = meanX[:, self.startIdx].unsqueeze(-1)
+        start_seg_x = meanX[:, sIdx].unsqueeze(-1)
         start_seg_x_dis_to_center = W//2 - start_seg_x
-        # align abd centralize the image along x-axis
+        # align and centralize the image along x-axis
         alignedX = meanX - start_seg_x - start_seg_x_dis_to_center
         alignedX = alignedX.round().int()
 
-        alongY = alongY.view(-1, S*H).float()
-        mean = alongY.mean(dim=-1)
-        std = alongY.std(dim=-1)
-        clampVal = mean + 3*std
-        for bi in range(B):
-            alongY[bi] = torch.clamp(alongY[bi], 0, clampVal[bi])
-        alongY = alongY.view(1, -1, S, H)
-        alongY = F.conv2d(alongY, blurFilt, padding=1, groups=B)
+        alongY = alongY.view(1, -1, S, H).float()
+        alongY = F.conv2d(alongY, blurFilt, padding=blurFiltPad, groups=B)
         alongY = alongY.squeeze()
         alongDim = torch.arange(H, dtype=torch.float32, device=device)
         alongDim = alongDim.expand(B, -1).unsqueeze(-1)
         meanY = torch.bmm(alongY, alongDim).squeeze(-1) / segmentLen_batch.view(-1,1)
-        start_seg_y = meanY[:, self.startIdx].unsqueeze(-1)
+        start_seg_y = meanY[:, sIdx].unsqueeze(-1)
         start_seg_y_dis_to_center = H//2 - start_seg_y
-        # align abd centralize the image along y-axis
+        # align and centralize the image along y-axis
         alignedY = meanY - start_seg_y - start_seg_y_dis_to_center
         alignedY = alignedY.round().int()
 
+        meanX = meanX.cpu().numpy()
+        meanY = meanY.cpu().numpy()
         container_batch = []
         for bi in range(B):
             segmentLen = int(segmentLen_batch[bi].item())
@@ -162,10 +129,14 @@ class QuantizationLayer(nn.Module):
             ones = torch.ones(segmentLen, dtype=torch.int32, device=device)
             onesBool = torch.ones(segmentLen, dtype=torch.bool, device=device)
             container = torch.zeros(W*H, dtype=torch.int32, device=device)
-            container.put_(idx_in_container[self.startIdx], ones, accumulate=True)
+            container.put_(idx_in_container[sIdx], ones, accumulate=True)
             verifier_old = torch.zeros( (W//2)*(H//2), dtype=torch.bool, device=device)
-            verifier_old.put_(idx_in_verifier[self.startIdx], onesBool, accumulate=False)
-            for si in range(self.startIdx+1, S):
+            verifier_old.put_(idx_in_verifier[sIdx], onesBool, accumulate=False)
+            for si in range(sIdx+1, eIdx):
+                isXoutlier = outlier1d(meanX[bi, si:si+10], thresh=3)[0]
+                isYoutlier = outlier1d(meanY[bi, si:si+10], thresh=3)[0]
+                if isXoutlier or isYoutlier:
+                    continue
                 verifier_new = verifier_old.detach().clone()
                 verifier_new.put_(idx_in_verifier[si], onesBool, accumulate=False)
                 verifier_new_cnt = verifier_new.sum().float()
@@ -174,9 +145,14 @@ class QuantizationLayer(nn.Module):
                     break
                 container.put_(idx_in_container[si], ones, accumulate=True)
                 verifier_old = verifier_new
+            container = container.float()
+            mean = container.mean()
+            std = container.std()
+            clampVal = mean + 3*std
+            container = torch.clamp(container, 0, clampVal)
+            container /= clampVal
             container_batch.append(container)
-        containers = torch.stack(container_batch).view(-1, H, W).float()
-        containers = containers.unsqueeze(dim=1)
+        containers = torch.stack(container_batch).view(-1, 1, H, W)
 
         if DEBUG==9:
             container_img = containers.cpu().numpy()
@@ -189,13 +165,13 @@ class QuantizationLayer(nn.Module):
                     ax.append( fig.add_subplot(rows, columns, i+1))
                     if i==2:
                         ax[-1].set_title('x-y graph')
-                        plt.imshow(container_img[bi][0], cmap='gray', vmin=0, vmax=4)
+                        plt.imshow(container_img[bi][0], cmap='gray', vmin=0, vmax=1)
                     elif i==0:
                         ax[-1].set_title('x-t graph')
-                        plt.imshow(alongX[bi], cmap='gray', vmin=0, vmax=80)
+                        plt.imshow(alongX[bi], cmap='gray')
                     elif i==1:
                         ax[-1].set_title('y-t graph')
-                        plt.imshow(alongY[bi], cmap='gray', vmin=0, vmax=80)
+                        plt.imshow(alongY[bi], cmap='gray')
                 plt.tight_layout()
                 plt.show()
             sys.exit(0)
