@@ -6,8 +6,6 @@ from .loss import cross_entropy_loss_and_accuracy
 def train_one_epoch(model, device, optimizer, dataloader, iteration):
     sum_accuracy = 0
     sum_loss = 0
-    model = model.train()
-    model.setMode(0)
     
     for events, labels in tqdm.tqdm(dataloader):
         labels = labels.to(device)
@@ -32,8 +30,6 @@ def train_one_epoch(model, device, optimizer, dataloader, iteration):
 def eval_one_epoch(model, device, dataloader):
     sum_accuracy = 0
     sum_loss = 0
-    model = model.eval()
-    model.setMode(1)
     
     for events, labels in tqdm.tqdm(dataloader):
         labels = labels.to(device)

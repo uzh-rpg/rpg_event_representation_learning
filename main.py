@@ -33,9 +33,9 @@ def FLAGS():
 
     # loader and device options
     parser.add_argument("--device", default="cuda:0")
-    parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--pin_memory", type=bool, default=True)
-    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--batch_size", type=int, default=8)
 
     parser.add_argument("--num_epochs", type=int, default=300)
     parser.add_argument("--save_every_n_epochs", type=int, default=5)
@@ -67,6 +67,8 @@ if __name__ == '__main__':
     training_dataset = NCaltech101(flags.training_dataset, augmentation=True)
     validation_dataset = NCaltech101(flags.validation_dataset)
 
+    datasetClasses = training_dataset.getClasses()
+
     # construct loader, handles data streaming to gpu
     training_loader = Loader(training_dataset, flags, device=flags.device)
     validation_loader = Loader(validation_dataset, flags, device=flags.device)
@@ -89,6 +91,8 @@ if __name__ == '__main__':
     for i in range(flags.num_epochs):
         
         print(f"Training step [{i:3d}/{flags.num_epochs:3d}]")
+        model = model.train()
+        model.setMode(0)
         training_loss, training_accuracy, iteration = train_one_epoch(model, flags.device, optimizer, training_loader, iteration)
         print(f"Training Iteration {iteration:5d}  Loss {training_loss:.4f}  Accuracy {training_accuracy:.4f}")
 
@@ -98,6 +102,8 @@ if __name__ == '__main__':
 
         if i%5 == 0:
             print(f"Validation step [{i:3d}/{flags.num_epochs:3d}]")
+            model = model.eval()
+            model.setMode(1)
             validation_loss, validation_accuracy = eval_one_epoch(model, flags.device, validation_loader)
             print(f"Validation Loss {validation_loss:.4f}  Accuracy {validation_accuracy:.4f}")
         

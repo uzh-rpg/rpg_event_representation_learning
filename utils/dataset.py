@@ -7,16 +7,16 @@ import random
 def random_shift_rotate_scale_events(events, max_shift=20, max_rad=0.1745, resolution=(180, 240)):
     H, W = resolution
 
-    # x, y, t, p = events.T
-    # rotate_rad = ( random.random()-0.5)*2*max_rad
-    # scale = random.random()/5 + 0.85
-    # x -= W//2
-    # y -= H//2
-    # x_new = ( x*np.cos(rotate_rad) + y*np.sin(rotate_rad)) * scale + W//2
-    # y_new = ( -1*x*np.sin(rotate_rad) + y*np.cos(rotate_rad)) * scale + H//2
-    # x_new = np.rint(x_new)
-    # y_new = np.rint(y_new)
-    # events = np.stack( (x_new, y_new, t, p), axis=1)
+    x, y, t, p = events.T
+    rotate_rad = 0. if max_rad==None else (random.random()-0.5)*2*max_rad
+    scale = 1.0 if random.random()<0.5 else random.random()/2. + 0.7
+    x -= W//2
+    y -= H//2
+    x_new = ( x*np.cos(rotate_rad) + y*np.sin(rotate_rad)) * scale + W//2
+    y_new = ( -1*x*np.sin(rotate_rad) + y*np.cos(rotate_rad)) * scale + H//2
+    x_new = np.rint(x_new)
+    y_new = np.rint(y_new)
+    events = np.stack( (x_new, y_new, t, p), axis=1)
 
     x_shift, y_shift = np.random.randint(-max_shift, max_shift+1, size=(2,))
     events[:,0] += x_shift
@@ -62,7 +62,10 @@ class NCaltech101:
         events = np.load(f).astype(np.float32)
 
         if self.augmentation:
-            events = random_shift_rotate_scale_events(events)
+            events = random_shift_rotate_scale_events(events, max_rad=None)
             events = random_flip_events_along_x(events)
 
         return events, label
+
+    def getClasses(self):
+        return self.classes.copy()
