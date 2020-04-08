@@ -9,7 +9,7 @@ from torchvision.models.resnet import resnet34
 import tqdm
 from .miscellaneous import outlier1d
 
-DEBUG = 9
+DEBUG = 0
 
 if DEBUG>0:
     import matplotlib.pyplot as plt
@@ -32,10 +32,13 @@ class QuantizationLayer(nn.Module):
                                     .03125, .03125, .01562, .03125, .03125
                                 ]]])
         # self.blurFilterKernel = torch.tensor([[[
-        #                             .075, .05, .075,
-        #                             .150, .300, .150,
-        #                             .075, .05, .075
+        #                             .02000, .02500, .05000, .02500, .02000,
+        #                             .02500, .03000, .10000, .03000, .02500,
+        #                             .01000, .04000, .20000, .04000, .01000,
+        #                             .02500, .03000, .10000, .03000, .02500,
+        #                             .02000, .02500, .05000, .02500, .02000
         #                         ]]])
+        assert math.isclose( self.blurFilterKernel.sum(), 1., rel_tol=1e-05), 'blurFilterKernel value error'
         self.blurFilterKernelSize = int( math.sqrt( len(self.blurFilterKernel[0,0])))
 
     def setMode(self, mode):
@@ -109,6 +112,7 @@ class QuantizationLayer(nn.Module):
         for bi in range(B):
             segmentLen = int(segmentLen_batch[bi].item())
             usableEventsLen = segmentLen*S
+            
             x, y, t, p, b = events[bi].t()
             x = x.int()
             y = y.int()
@@ -120,31 +124,38 @@ class QuantizationLayer(nn.Module):
             y = y[:usableEventsLen]
             y -= shiftedY
             y = torch.clamp(y, 0, H-1)
+            
             idx_in_container = x + W*y
             idx_in_container = idx_in_container.long()
             idx_in_container = torch.chunk(idx_in_container, S)
-            idx_in_verifier = (x//2) + (W//2)*(y//2)
-            idx_in_verifier = idx_in_verifier.long()
-            idx_in_verifier = torch.chunk(idx_in_verifier, S)
             ones = torch.ones(segmentLen, dtype=torch.int32, device=device)
             onesBool = torch.ones(segmentLen, dtype=torch.bool, device=device)
             container = torch.zeros(W*H, dtype=torch.int32, device=device)
             container.put_(idx_in_container[sIdx], ones, accumulate=True)
-            verifier_old = torch.zeros( (W//2)*(H//2), dtype=torch.bool, device=device)
-            verifier_old.put_(idx_in_verifier[sIdx], onesBool, accumulate=False)
+            verifier_old = []
+            verifier_old.append( torch.zeros_like(container, dtype=torch.bool, device=device))
+            verifier_old[0].put_(idx_in_container[sIdx], onesBool, accumulate=False)
+            verifier_old.append( torch.ones_like(verifier_old[0]))
+            confidentPixs = torch.zeros_like(container)
             for si in range(sIdx+1, eIdx):
                 isXoutlier = outlier1d(meanX[bi, si:si+10], thresh=3)[0]
                 isYoutlier = outlier1d(meanY[bi, si:si+10], thresh=3)[0]
                 if isXoutlier or isYoutlier:
                     continue
-                verifier_new = verifier_old.detach().clone()
-                verifier_new.put_(idx_in_verifier[si], onesBool, accumulate=False)
+                verifier_new = torch.zeros_like(verifier_old[0])
+                verifier_new.put_(idx_in_container[si], onesBool, accumulate=False)
+                confidentPixs += verifier_new & verifier_old[0] & verifier_old[1]
+                verifier_new = verifier_new | verifier_old[0]
                 verifier_new_cnt = verifier_new.sum().float()
-                new_info_cnt = torch.logical_xor(verifier_new, verifier_old).sum().float()
+                new_info_cnt = torch.logical_xor(verifier_new, verifier_old[0]).sum().float()
                 if new_info_cnt/verifier_new_cnt < 0.01:
+                    if DEBUG>=8:
+                        print("%d: %d" % (bi, si))
                     break
                 container.put_(idx_in_container[si], ones, accumulate=True)
-                verifier_old = verifier_new
+                verifier_old[1] = verifier_old[0]
+                verifier_old[0] = verifier_new
+            
             container = container.float()
             mean = container.mean()
             std = container.std()
@@ -152,26 +163,38 @@ class QuantizationLayer(nn.Module):
             container = torch.clamp(container, 0, clampVal)
             container /= clampVal
             container_batch.append(container)
-        containers = torch.stack(container_batch).view(-1, 1, H, W)
+            
+            confidentPixs = confidentPixs.float()
+            mean = confidentPixs.mean()
+            std = confidentPixs.std()
+            clampVal = mean + 3*std
+            confidentPixs = torch.clamp(confidentPixs, 0, clampVal)
+            confidentPixs /= clampVal
+            container_batch.append(confidentPixs)
+        
+        containers = torch.stack(container_batch).view(-1, 2, H, W)
 
         if DEBUG==9:
             container_img = containers.cpu().numpy()
             for bi in range(B):
                 fig = plt.figure(figsize=(15,15))
                 ax = []
-                rows = 3
+                rows = 4
                 columns = 1
                 for i in range(rows * columns):
                     ax.append( fig.add_subplot(rows, columns, i+1))
-                    if i==2:
-                        ax[-1].set_title('x-y graph')
-                        plt.imshow(container_img[bi][0], cmap='gray', vmin=0, vmax=1)
-                    elif i==0:
+                    if i==0:
                         ax[-1].set_title('x-t graph')
                         plt.imshow(alongX[bi], cmap='gray')
                     elif i==1:
                         ax[-1].set_title('y-t graph')
                         plt.imshow(alongY[bi], cmap='gray')
+                    elif i==2:
+                        ax[-1].set_title('x-y graph')
+                        plt.imshow(container_img[bi][0], cmap='gray', vmin=0, vmax=1)
+                    elif i==3:
+                        ax[-1].set_title('x-y graph 2')
+                        plt.imshow(container_img[bi][1], cmap='gray', vmin=0, vmax=1)
                 plt.tight_layout()
                 plt.show()
             sys.exit(0)
@@ -193,6 +216,7 @@ class Classifier(nn.Module):
         self.quantization_layer = QuantizationLayer(voxel_dimension, device)
         self.crop_dimension = crop_dimension
         self.num_classes = num_classes
+        self.in_channels = 2
 
         classifierSelect = 'resnet34'
         if classifierSelect == 'resnet34':
@@ -203,12 +227,12 @@ class Classifier(nn.Module):
             else:
                 self.classifier = resnet34(pretrained=pretrained)
             # replace fc layer and first convolutional layer
-            self.classifier.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.classifier.conv1 = nn.Conv2d(self.in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.classifier.fc = nn.Linear(self.classifier.fc.in_features, num_classes)
         elif classifierSelect == 'densenet201':
             self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'densenet201', pretrained=pretrained)
             # replace fc layer and first convolutional layer
-            self.classifier.features.conv0 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.classifier.features.conv0 = nn.Conv2d(self.in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.classifier.classifier = nn.Linear(self.classifier.classifier.in_features, num_classes)
 
     def setMode(self, mode):

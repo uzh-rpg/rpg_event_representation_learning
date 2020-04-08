@@ -33,11 +33,11 @@ def FLAGS():
 
     # loader and device options
     parser.add_argument("--device", default="cuda:0")
-    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--pin_memory", type=bool, default=True)
     parser.add_argument("--batch_size", type=int, default=4)
 
-    parser.add_argument("--num_epochs", type=int, default=30)
+    parser.add_argument("--num_epochs", type=int, default=300)
     parser.add_argument("--save_every_n_epochs", type=int, default=5)
 
     flags = parser.parse_args()
