@@ -39,15 +39,17 @@ class QuantizationLayer(nn.Module):
         #                             .03125, .04406, .03125, .04406, .03125,
         #                             .03125, .03125, .01562, .03125, .03125
         #                         ]]])
-        # self.blurFilterKernel = torch.tensor([[[
-        #                             .04000, .04000, .00000, .04000, .04000,
-        #                             .04000, .08000, .00000, .08000, .04000,
-        #                             .00000, .00000, .20000, .00000, .00000,
-        #                             .04000, .08000, .00000, .08000, .04000,
-        #                             .04000, .04000, .00000, .04000, .04000
-        #                         ]]])
+        self.dilationKernel = torch.tensor([[[
+                            .0000, .0000, .0700, .0000, .0000,
+                            .0000, .0700, .0800, .0700, .0000,
+                            .0700, .0800, .1200, .0800, .0700,
+                            .0000, .0700, .0800, .0700, .0000,
+                            .0000, .0000, .0700, .0000, .0000
+                        ]]])
         assert math.isclose( self.blurFilterKernel.sum(), 1., rel_tol=1e-05), 'blurFilterKernel value error'
+        assert math.isclose( self.dilationKernel.sum(), 1., rel_tol=1e-05), 'dilationKernel value error'
         self.blurFilterKernelSize = int( math.sqrt( len(self.blurFilterKernel[0,0])))
+        self.dilationKernelSize = int( math.sqrt( len(self.dilationKernel[0,0])))
 
     def setMode(self, mode):
         self.mode = mode
@@ -266,7 +268,6 @@ class Classifier(nn.Module):
 
     def forward(self, x):
         frame = self.quantization_layer.forward(x)
-        # frame_cropped = self.crop_and_resize_to_resolution(frame, self.crop_dimension)
-        # pred = self.classifier.forward(frame_cropped)
-        pred = self.classifier.forward(frame)
+        frame_cropped = self.crop_and_resize_to_resolution(frame, self.crop_dimension)
+        pred = self.classifier.forward(frame_cropped)
         return pred, frame
