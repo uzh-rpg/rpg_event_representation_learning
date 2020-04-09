@@ -18,8 +18,12 @@ from utils.loader import Loader
 from utils.train_eval import train_one_epoch, eval_one_epoch
 
 if DEBUG==9:
-    torch.manual_seed(1)
-    np.random.seed(1)
+    import time
+    seed = int( time.time())
+    print("Seed: %d" % seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
 
 def FLAGS():
     parser = argparse.ArgumentParser("""Train classifier using a learnt quantization layer.""")
