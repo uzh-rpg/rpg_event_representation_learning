@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models.resnet import resnet34
 import tqdm
-from .miscellaneous import outlier1d
+from .miscellaneous import outlier1d, get_graph_feature
 
 DEBUG = 0
 
@@ -15,6 +15,73 @@ if DEBUG>0:
     import matplotlib.pyplot as plt
     import sys
     import time
+
+class DGCNN(nn.Module):
+    def __init__(self, output_channels=101, device='cpu'):
+        super(DGCNN, self).__init__()
+        self.device = device
+        self.k = 20
+        
+        self.bn1 = nn.BatchNorm2d(64)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.bn3 = nn.BatchNorm2d(128)
+        self.bn4 = nn.BatchNorm2d(256)
+        self.bn5 = nn.BatchNorm1d(1024)
+
+        self.conv1 = nn.Sequential(nn.Conv2d(6, 64, kernel_size=1, bias=False),
+                                   self.bn1,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.conv2 = nn.Sequential(nn.Conv2d(64*2, 64, kernel_size=1, bias=False),
+                                   self.bn2,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.conv3 = nn.Sequential(nn.Conv2d(64*2, 128, kernel_size=1, bias=False),
+                                   self.bn3,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.conv4 = nn.Sequential(nn.Conv2d(128*2, 256, kernel_size=1, bias=False),
+                                   self.bn4,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.conv5 = nn.Sequential(nn.Conv1d(512, 1024, kernel_size=1, bias=False),
+                                   self.bn5,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.linear1 = nn.Linear(1024*2, 512, bias=False)
+        self.bn6 = nn.BatchNorm1d(512)
+        self.dp1 = nn.Dropout(p=0.5)
+        self.linear2 = nn.Linear(512, 256)
+        self.bn7 = nn.BatchNorm1d(256)
+        self.dp2 = nn.Dropout(p=0.5)
+        self.linear3 = nn.Linear(256, output_channels)
+
+    def forward(self, x):
+        batch_size = x.size(0)
+        x = get_graph_feature(x, k=self.k, device=self.device).contiguous()
+        x = self.conv1(x)
+        x1 = x.max(dim=-1, keepdim=False)[0]
+
+        x = get_graph_feature(x1, k=self.k, device=self.device).contiguous()
+        x = self.conv2(x)
+        x2 = x.max(dim=-1, keepdim=False)[0]
+
+        x = get_graph_feature(x2, k=self.k, device=self.device).contiguous()
+        x = self.conv3(x)
+        x3 = x.max(dim=-1, keepdim=False)[0]
+
+        x = get_graph_feature(x3, k=self.k, device=self.device).contiguous()
+        x = self.conv4(x)
+        x4 = x.max(dim=-1, keepdim=False)[0]
+
+        x = torch.cat((x1, x2, x3, x4), dim=1)
+
+        x = self.conv5(x)
+        x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1)
+        x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1)
+        x = torch.cat((x1, x2), 1)
+
+        x = F.leaky_relu(self.bn6(self.linear1(x)), negative_slope=0.2)
+        x = self.dp1(x)
+        x = F.leaky_relu(self.bn7(self.linear2(x)), negative_slope=0.2)
+        x = self.dp2(x)
+        x = self.linear3(x)
+        return x
 
 class QuantizationLayer(nn.Module):
     def __init__(self, dim, device):
@@ -128,6 +195,7 @@ class QuantizationLayer(nn.Module):
 
         meanX = meanX.cpu().numpy()
         meanY = meanY.cpu().numpy()
+        vox_batch = []
         container_batch = []
         for bi in range(B):
             segmentLen = int(segmentLen_batch[bi].item())
@@ -144,6 +212,15 @@ class QuantizationLayer(nn.Module):
             y = y[:usableEventsLen]
             y -= shiftedY
             y = torch.clamp(y, 0, H-1)
+
+            firstPix = segmentLen*sIdx
+            assert usableEventsLen-firstPix>2048, "Not enough usable events"
+            x_vox = (x[firstPix:firstPix+2048].float()/W).unsqueeze(0)
+            y_vox = (y[firstPix:firstPix+2048].float()/H).unsqueeze(0)
+            t_vox = t[firstPix:firstPix+2048]
+            t_vox = ( t_vox / t_vox.max()).unsqueeze(0)
+            vox_batch.append( torch.stack([x_vox, y_vox, t_vox]))
+            continue
             
             idx_in_container = x + W*y
             idx_in_container = idx_in_container.long()
@@ -182,7 +259,8 @@ class QuantizationLayer(nn.Module):
                 container += noises
             container_batch.append(container)
         
-        containers = torch.stack(container_batch).view(-1, 1, H, W)
+        # containers = torch.stack(container_batch).view(-1, 1, H, W)
+        vox = torch.stack(vox_batch).view(-1, 3, 2048)
 
         if DEBUG==9:
             container_img = containers.cpu().numpy()
@@ -206,7 +284,8 @@ class QuantizationLayer(nn.Module):
                 plt.show()
             sys.exit(0)
 
-        return containers
+        # return containers
+        return vox
 
 class Classifier(nn.Module):
     def __init__(self,
@@ -223,7 +302,7 @@ class Classifier(nn.Module):
         self.num_classes = num_classes
         self.in_channels = 1
 
-        classifierSelect = 'resnet34'
+        classifierSelect = 'dgcnn'
         if classifierSelect == 'resnet34':
             self.modelChildren = ['avgpool', 'layer4', 'layer3', 'layer2', 'layer1', 'maxpool', 'relu', 'bn1']
             classifierSelect_sub = ''
@@ -245,6 +324,8 @@ class Classifier(nn.Module):
                 nn.Dropout(0.2),
                 nn.Linear(self.classifier.classifier.in_features, num_classes)
             )
+        elif classifierSelect == 'dgcnn':
+            self.classifier = DGCNN(num_classes, device=device)
             
     def setMode(self, mode):
         self.mode = mode
@@ -263,6 +344,7 @@ class Classifier(nn.Module):
 
     def forward(self, x):
         frame = self.quantization_layer.forward(x)
-        frame_cropped = self.crop_and_resize_to_resolution(frame, self.crop_dimension)
-        pred = self.classifier.forward(frame_cropped)
+        # frame_cropped = self.crop_and_resize_to_resolution(frame, self.crop_dimension)
+        # pred = self.classifier.forward(frame_cropped)
+        pred = self.classifier.forward(frame)
         return pred, frame

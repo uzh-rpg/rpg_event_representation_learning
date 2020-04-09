@@ -2,7 +2,6 @@ import numpy as np
 import torch
 from .torch_percentile import percentile
 
-
 # Obtained and modified from https://github.com/MingyeXu/GS-Net
 def knn(x, k):
     inner = -2*torch.matmul(x.transpose(2, 1), x)
@@ -13,13 +12,12 @@ def knn(x, k):
     return idx
 
 # Obtained and modified from https://github.com/MingyeXu/GS-Net
-def get_graph_feature(x, k=20, idx=None):
+def get_graph_feature(x, k=20, idx=None, device='cpu'):
     batch_size = x.size(0)
     num_points = x.size(2)
     x = x.view(batch_size, -1, num_points)
     if idx is None:
         idx = knn(x, k=k)   # (batch_size, num_points, k)
-    device = torch.device('cuda')
 
     idx_base = torch.arange(0, batch_size, device=device).view(-1, 1, 1)*num_points
 
