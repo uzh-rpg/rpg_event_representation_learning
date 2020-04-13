@@ -48,8 +48,8 @@ for file_name in files:
                     i_bin = bin(i)[2:].zfill(14)
                     id = i_bin[-2:]
                     if id == '10':
-                        row = int(i_bin[:-4], 2)
-                    elif id == '01':
+                        row = 799 - int(i_bin[:-4], 2)
+                    elif id=='01' and row!=-1:
                         r_list.append(row)
                         t_list.append(ts)
                         c_list.append( int(i_bin[:-3], 2))
@@ -57,16 +57,14 @@ for file_name in files:
                         t = int(i_bin[:-2], 2)
                         if t != t_val:
                             t_val = t
-                            ts += ts_incremental  
-    if r_list[0] == -1:
-        r_list.pop(0)
-        c_list.pop(0)
-        t_list.pop(0)
+                            ts += ts_incremental
     r_np = np.asarray(r_list, dtype=np.float32)
     c_np = np.asarray(c_list, dtype=np.float32)
     t_np = np.asarray(t_list, dtype=np.float32)
     p_np = np.zeros_like(t_list)
-    events = np.stack([c_np, r_np, t_np, p_np])
+    assert np.max(r_np)<800, "Error: row >= 800"
+    assert np.max(c_np)<1280, "Error: col >= 1280"
+    events = np.stack([c_np, r_np, t_np, p_np], axis=-1)    
     np.save( path.join(save_loc, file_name[:-4]), events)
 
 

@@ -34,7 +34,7 @@ def random_flip_events_along_x(events, resolution=(180, 240), p=0.5):
     return events
 
 class NCaltech101:
-    def __init__(self, root, augmentation=False):
+    def __init__(self, root, augmentation=False, resolution=(180, 240)):
         self.classes = listdir(root)
         self.classes.sort()
 
@@ -42,6 +42,7 @@ class NCaltech101:
         self.labels = []
 
         self.augmentation = augmentation
+        self.resolution = resolution
 
         for i, c in enumerate(self.classes):
             new_files = [join(root, c, f) for f in listdir(join(root, c))]
@@ -62,8 +63,8 @@ class NCaltech101:
         events = np.load(f).astype(np.float32)
 
         if self.augmentation:
-            events = random_shift_rotate_scale_events(events, max_rad=None)
-            events = random_flip_events_along_x(events)
+            events = random_shift_rotate_scale_events(events, max_rad=None, resolution=self.resolution)
+            events = random_flip_events_along_x(events, resolution=self.resolution)
 
         return events, label
 

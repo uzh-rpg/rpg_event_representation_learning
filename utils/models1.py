@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torchvision.models.resnet import resnet34
 import tqdm
 from .miscellaneous import outlier1d
+from .median_pool import MedianPool2d
 
 DEBUG = 0
 
@@ -130,7 +131,6 @@ class QuantizationLayer(nn.Module):
 
         meanX = meanX.cpu().numpy()
         meanY = meanY.cpu().numpy()
-        vox_batch = []
         container_batch = []
         for bi in range(B):
             segmentLen = int(segmentLen_batch[bi].item())
@@ -176,7 +176,7 @@ class QuantizationLayer(nn.Module):
             container = container.float()
             mean = container.mean()
             std = container.std()
-            clampVal = mean + 3*std
+            clampVal = mean + 2*std
             container = torch.clamp(container, 0, clampVal)
             container /= clampVal
             if self.mode==0 and random.random()>0.5:
@@ -215,7 +215,7 @@ class QuantizationLayer(nn.Module):
 
 class Classifier(nn.Module):
     def __init__(self,
-                 voxel_dimension=(180,240),
+                 dimension=(180,240),
                  crop_dimension=(224, 224),  # dimension of crop before it goes into classifier
                  num_classes=101,
                  pretrained=True,
@@ -223,7 +223,7 @@ class Classifier(nn.Module):
 
         nn.Module.__init__(self)
         self.mode = 0   # 0:Training 1:Validation 
-        self.quantization_layer = QuantizationLayer(voxel_dimension, device)
+        self.quantization_layer = QuantizationLayer(dimension, device)
         self.crop_dimension = crop_dimension
         self.num_classes = num_classes
         self.in_channels = 1
@@ -250,6 +250,8 @@ class Classifier(nn.Module):
                 nn.Dropout(0.2),
                 nn.Linear(self.classifier.classifier.in_features, num_classes)
             )
+        
+        self.medianFilter = MedianPool2d(kernel_size=3, stride=1, same=True)
             
     def setMode(self, mode):
         self.mode = mode
@@ -269,5 +271,6 @@ class Classifier(nn.Module):
     def forward(self, x):
         frame = self.quantization_layer.forward(x)
         frame_cropped = self.crop_and_resize_to_resolution(frame, self.crop_dimension)
+        frame_cropped = self.medianFilter(frame_cropped)
         pred = self.classifier.forward(frame_cropped)
         return pred, frame

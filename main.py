@@ -32,6 +32,10 @@ def FLAGS():
     parser.add_argument("--validation_dataset", default="", required=True)
     parser.add_argument("--training_dataset", default="", required=True)
 
+    # Event frame dimension
+    parser.add_argument("--height", type=int, default=180)
+    parser.add_argument("--width", type=int, default=240)
+
     # logging options
     parser.add_argument("--log_dir", default="", required=True)
 
@@ -52,6 +56,8 @@ def FLAGS():
 
     print(f"----------------------------\n"
           f"Starting training with \n"
+          f"height: {flags.height}\n"
+          f"width: {flags.width}\n"
           f"num_epochs: {flags.num_epochs}\n"
           f"batch_size: {flags.batch_size}\n"
           f"device: {flags.device}\n"
@@ -66,10 +72,11 @@ def FLAGS():
 
 if __name__ == '__main__':
     flags = FLAGS()
+    dim = (flags.height, flags.width)
 
     # datasets, add augmentation to training set
-    training_dataset = NCaltech101(flags.training_dataset, augmentation=True)
-    validation_dataset = NCaltech101(flags.validation_dataset)
+    training_dataset = NCaltech101(flags.training_dataset, augmentation=True, resolution=dim)
+    validation_dataset = NCaltech101(flags.validation_dataset, resolution=dim)
 
     datasetClasses = training_dataset.getClasses()
 
@@ -78,7 +85,7 @@ if __name__ == '__main__':
     validation_loader = Loader(validation_dataset, flags, device=flags.device)
 
     # model, and put to device
-    model = Classifier(device=flags.device)
+    model = Classifier(device=flags.device, dimension=dim)
     model = model.to(flags.device)
 
     # optimizer and lr scheduler
