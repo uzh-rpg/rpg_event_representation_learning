@@ -5,7 +5,6 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models.resnet import resnet34
 import tqdm
 from .miscellaneous import outlier1d
 from .median_pool import MedianPool2d
@@ -26,6 +25,7 @@ class QuantizationLayer(nn.Module):
         self.segments = 48
         self.startIdx = 3
         self.endBias = 10
+        self.USE_MEDIAN_FILTER = False
         self.blurFilterKernel = torch.tensor([[[
                             .04, .04, .04, .04, .04,
                             .04, .04, .04, .04, .04,
@@ -147,32 +147,33 @@ class QuantizationLayer(nn.Module):
             y = y[:usableEventsLen]
             y -= shiftedY
             y = torch.clamp(y, 0, H-1)
-            
+
             idx_in_container = x + W*y
             idx_in_container = idx_in_container.long()
             idx_in_container = torch.chunk(idx_in_container, S)
             idx_in_verifier = (x//2) + (W//2)*(y//2)
             idx_in_verifier = idx_in_verifier.long()
             idx_in_verifier = torch.chunk(idx_in_verifier, S)
+            
             ones = torch.ones(segmentLen, dtype=torch.int32, device=device)
-            onesBool = torch.ones(segmentLen, dtype=torch.bool, device=device)
+            # onesBool = torch.ones(segmentLen, dtype=torch.bool, device=device)
             container = torch.zeros(W*H, dtype=torch.int32, device=device)
             container.put_(idx_in_container[sIdx], ones, accumulate=True)
-            verifier_old = torch.zeros( (W//2)*(H//2), dtype=torch.bool, device=device)
-            verifier_old.put_(idx_in_verifier[sIdx], onesBool, accumulate=False)
+            # verifier_old = torch.zeros( (W//2)*(H//2), dtype=torch.bool, device=device)
+            # verifier_old.put_(idx_in_verifier[sIdx], onesBool, accumulate=False)
             for si in range(sIdx+1, eIdx):
                 isXoutlier = outlier1d(meanX[bi, si:si+10], thresh=2)[0]
                 isYoutlier = outlier1d(meanY[bi, si:si+10], thresh=2)[0]
                 if isXoutlier or isYoutlier:
                     continue
-                verifier_new = verifier_old.detach().clone()
-                verifier_new.put_(idx_in_verifier[si], onesBool, accumulate=False)
-                verifier_new_cnt = verifier_new.sum().float()
-                new_info_cnt = torch.logical_xor(verifier_new, verifier_old).sum().float()
-                if new_info_cnt/verifier_new_cnt < 0.1:
-                    break
+                # verifier_new = verifier_old.detach().clone()
+                # verifier_new.put_(idx_in_verifier[si], onesBool, accumulate=False)
+                # verifier_new_cnt = verifier_new.sum().float()
+                # new_info_cnt = torch.logical_xor(verifier_new, verifier_old).sum().float()
+                # if new_info_cnt/verifier_new_cnt < 0.1:
+                #     break
                 container.put_(idx_in_container[si], ones, accumulate=True)
-                verifier_old = verifier_new
+                # verifier_old = verifier_new
             container = container.float()
             mean = container.mean()
             std = container.std()
@@ -228,18 +229,22 @@ class Classifier(nn.Module):
         self.num_classes = num_classes
         self.in_channels = 1
 
-        classifierSelect = 'resnet34'
+        classifierSelect = 'mobilenet_v2'
         if classifierSelect == 'resnet34':
-            self.modelChildren = ['avgpool', 'layer4', 'layer3', 'layer2', 'layer1', 'maxpool', 'relu', 'bn1']
-            classifierSelect_sub = ''
-            if classifierSelect_sub == 'wide':
-                self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'wide_resnet50_2', pretrained=pretrained)
-            else:
-                self.classifier = resnet34(pretrained=pretrained)
+            from torchvision.models.resnet import resnet34
+            self.classifier = resnet34(pretrained=pretrained)
             # replace fc layer and first convolutional layer
             self.classifier.conv1 = nn.Conv2d(self.in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.classifier.fc = nn.Sequential(
-                nn.Dropout(0.2),
+                nn.Dropout(0.1),
+                nn.Linear(self.classifier.fc.in_features, num_classes)
+            )
+        elif classifierSelect == 'wide_resnet50':
+            self.classifier = torch.hub.load('pytorch/vision:v0.5.0', 'wide_resnet50_2', pretrained=pretrained)
+            # replace fc layer and first convolutional layer
+            self.classifier.conv1 = nn.Conv2d(self.in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.classifier.fc = nn.Sequential(
+                nn.Dropout(0.1),
                 nn.Linear(self.classifier.fc.in_features, num_classes)
             )
         elif classifierSelect == 'densenet201':
@@ -247,10 +252,22 @@ class Classifier(nn.Module):
             # replace fc layer and first convolutional layer
             self.classifier.features.conv0 = nn.Conv2d(self.in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.classifier.classifier = nn.Sequential(
-                nn.Dropout(0.2),
+                nn.Dropout(0.1),
                 nn.Linear(self.classifier.classifier.in_features, num_classes)
             )
-        
+        elif classifierSelect == 'hardnet68':
+            # ONly usable with CUDA
+            self.classifier = torch.hub.load('PingoLH/Pytorch-HarDNet', 'hardnet68', pretrained=pretrained)
+            # replace fc layer and first convolutional layer
+            self.classifier.base[0].conv = nn.Conv2d(self.in_channels, 32, kernel_size=3, stride=2, padding=1, bias=False)
+            self.classifier.base[-1]._modules['3'] = nn.Linear(1024, num_classes)
+        elif classifierSelect == 'mobilenet_v2':
+            from torchvision.models.mobilenet import mobilenet_v2, _make_divisible
+            self.classifier = mobilenet_v2(pretrained=pretrained)
+            classifier_input_channel = _make_divisible(32.0, 8)
+            self.classifier.features._modules['0'] = nn.Conv2d(self.in_channels, classifier_input_channel, kernel_size=3, stride=1, padding=1, bias=False)
+            self.classifier.classifier._modules['1'] = nn.Linear(self.classifier.last_channel, num_classes)
+
         self.medianFilter = MedianPool2d(kernel_size=3, stride=1, same=True)
             
     def setMode(self, mode):
@@ -271,6 +288,7 @@ class Classifier(nn.Module):
     def forward(self, x):
         frame = self.quantization_layer.forward(x)
         frame_cropped = self.crop_and_resize_to_resolution(frame, self.crop_dimension)
-        frame_cropped = self.medianFilter(frame_cropped)
+        if self.USE_MEDIAN_FILTER:
+            frame_cropped = self.medianFilter(frame_cropped)
         pred = self.classifier.forward(frame_cropped)
         return pred, frame

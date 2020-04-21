@@ -4,8 +4,8 @@ from os import path, listdir
 import sys
 
 event_frame_time_sec = 0.03 
-celeX_data_loc = 'celeX_files/bin'
-npy_data_loc = 'celeX_files/npy'
+celeX_data_loc = 'celex5_files/bin'
+npy_data_loc = 'celex5_files/npy'
 currentDirectory = os.getcwd()
 
 save_loc = path.join(currentDirectory, npy_data_loc)

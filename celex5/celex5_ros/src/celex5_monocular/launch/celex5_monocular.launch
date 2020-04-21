@@ -1,0 +1,13 @@
+<launch>
+
+  <node name="celex_monocular" pkg="celex5_monocular" type="celex5_monocular_node" output="screen" >
+    <param name="celex_mode" value="Event_Off_Pixel_Timestamp_Mode" />
+    <param name="threshold" value="211" />
+    <param name="clock_rate" value="70" />
+    <param name="bin_output_path" value="$(find celex5_monocular)/output/eventRecord.bin" />
+    <param name="actionMode" value="0" /> <!--0:normal 1:read_from_bin 2:generate_bin-->
+  </node>
+
+  <node name="events2npy" pkg="celex5_monocular" type="events2npy.py" output="screen" >
+  </node>
+</launch>
