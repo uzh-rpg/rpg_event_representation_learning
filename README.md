@@ -10,7 +10,7 @@ If you use this code in an academic context, please cite the following work:
 [Daniel Gehrig](https://danielgehrig18.github.io/), [Antonio Loquercio](https://antonilo.github.io/), Konstantinos G. Derpanis, Davide Scaramuzza, "End-to-End Learning of Representations 
 for Asynchronous Event-Based Data", The International Conference on Computer Vision (ICCV), 2019
 
-```
+```bibtex
 @InProceedings{Gehrig_2019_ICCV,
   author = {Daniel Gehrig and Antonio Loquercio and Konstantinos G. Derpanis and Davide Scaramuzza},
   title = {End-to-End Learning of Representations for Asynchronous Event-Based Data},
@@ -48,6 +48,8 @@ Then start training by calling
 
 Here, `validation_dataset` and `training_dataset` should point to the folders where the training and validation set are stored.
 `log_dir` controls logging and `device` controls on which device you want to train. Checkpoints and models with lowest validation loss will be saved in the root folder of `log_dir`.
+
+The N-Cars dataset can be downloaded [here](http://rpg.ifi.uzh.ch/datasets/gehrig_et_al_iccv19/N-Cars.zip).
 
 ### Additional parameters 
 * `--num_worker` how many threads to use to load data
