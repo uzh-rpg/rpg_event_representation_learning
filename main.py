@@ -23,6 +23,7 @@ def FLAGS():
     # training / validation dataset
     parser.add_argument("--validation_dataset", default="", required=True)
     parser.add_argument("--training_dataset", default="", required=True)
+    parser.add_argument("--testing_dataset", default="", required=True)
 
     # logging options
     parser.add_argument("--log_dir", default="", required=True)
@@ -41,6 +42,7 @@ def FLAGS():
     assert os.path.isdir(dirname(flags.log_dir)), f"Log directory root {dirname(flags.log_dir)} not found."
     assert os.path.isdir(flags.validation_dataset), f"Validation dataset directory {flags.validation_dataset} not found."
     assert os.path.isdir(flags.training_dataset), f"Training dataset directory {flags.training_dataset} not found."
+    assert os.path.isdir(flags.testing_dataset), f"Testing dataset directory {flags.testing_dataset} not found."
 
     print(f"----------------------------\n"
           f"Starting training with \n"
@@ -50,6 +52,7 @@ def FLAGS():
           f"log_dir: {flags.log_dir}\n"
           f"training_dataset: {flags.training_dataset}\n"
           f"validation_dataset: {flags.validation_dataset}\n"
+          f"testing_dataset: {flags.testing_dataset}\n"
           f"----------------------------")
 
     return flags
@@ -82,15 +85,16 @@ if __name__ == '__main__':
 
     # datasets, add augmentation to training set
     training_dataset = NCaltech101(flags.training_dataset, augmentation=True)
-    validation_dataset = NCaltech101(flags.validation_dataset)
+    validation_dataset = NCaltech101(flags.validation_dataset, classes=training_dataset.classes)
+    testing_dataset = NCaltech101(flags.testing_dataset, classes=training_dataset.classes)
 
     # construct loader, handles data streaming to gpu
     training_loader = Loader(training_dataset, flags, device=flags.device)
     validation_loader = Loader(validation_dataset, flags, device=flags.device)
+    testing_loader = Loader(testing_dataset, flags, device=flags.device)
 
     # model, and put to device
-    model = Classifier()
-    model = model.to(flags.device)
+    model = Classifier(num_classes=len(training_dataset.classes))
 
     # optimizer and lr scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
@@ -99,9 +103,10 @@ if __name__ == '__main__':
     writer = SummaryWriter(flags.log_dir)
 
     iteration = 0
-    min_validation_loss = 1000
+    min_validation_loss = np.inf
 
     for i in range(flags.num_epochs):
+        ######### Validation #########
         sum_accuracy = 0
         sum_loss = 0
         model = model.eval()
@@ -136,7 +141,7 @@ if __name__ == '__main__':
                 "state_dict": state_dict,
                 "min_val_loss": min_validation_loss,
                 "iteration": iteration
-            }, "log/model_best.pth")
+            }, os.path.join(flags.log_dir, "model_best.pth"))
             print("New best at ", validation_loss)
 
         if i % flags.save_every_n_epochs == 0:
@@ -145,8 +150,39 @@ if __name__ == '__main__':
                 "state_dict": state_dict,
                 "min_val_loss": min_validation_loss,
                 "iteration": iteration
-            }, "log/checkpoint_%05d_%.4f.pth" % (iteration, min_validation_loss))
+            }, os.path.join(flags.log_dir, "checkpoint_%05d_%.4f.pth" % (iteration, min_validation_loss)))
 
+
+
+        ######### Testing #########
+        sum_accuracy = 0
+        sum_loss = 0
+        model = model.eval()
+
+        print(f"Testing step [{i:3d}/{flags.num_epochs:3d}]")
+        for events, labels in tqdm.tqdm(testing_loader):
+
+            with torch.no_grad():
+                pred_labels, representation = model(events)
+                loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
+
+            sum_accuracy += accuracy
+            sum_loss += loss
+
+        testing_loss = sum_loss.item() / len(testing_loader)
+        testing_accuracy = sum_accuracy.item() / len(testing_loader)
+
+        writer.add_scalar("testing/accuracy", testing_accuracy, iteration)
+        writer.add_scalar("testing/loss", testing_loss, iteration)
+
+        # visualize representation
+        representation_vizualization = create_image(representation)
+        writer.add_image("testing/representation", representation_vizualization, iteration)
+
+        print(f"Testing Loss {testing_loss:.4f}  Accuracy {testing_accuracy:.4f}")
+
+
+        ######### Training #########
         sum_accuracy = 0
         sum_loss = 0
 
@@ -179,3 +215,4 @@ if __name__ == '__main__':
 
         representation_vizualization = create_image(representation)
         writer.add_image("training/representation", representation_vizualization, iteration)
+        writer.flush()
