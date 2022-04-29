@@ -91,16 +91,16 @@ class QuantizationLayer(nn.Module):
 
     def forward(self, events):
         # points is a list, since events can have any size
-        B = int((1+events[-1,-1]).item())
-        num_voxels = int(2 * np.prod(self.dim) * B)
-        vox = events[0].new_full([num_voxels,], fill_value=0)
+        B = events[:,-1].unique().cpu().numpy().astype(int)
+        num_voxels = int(2 * np.prod(self.dim) * len(B))
+        vox = torch.full([num_voxels,], fill_value=0, dtype=events.dtype, device=events.device)
         C, H, W = self.dim
 
         # get values for each channel
         x, y, t, p, b = events.t()
 
         # normalizing timestamps
-        for bi in range(B):
+        for bi in B:
             t[events[:,-1] == bi] /= t[events[:,-1] == bi].max()
 
         p = (p+1)/2  # maps polarity to 0, 1
