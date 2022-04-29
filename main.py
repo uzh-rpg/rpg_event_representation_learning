@@ -95,6 +95,7 @@ if __name__ == '__main__':
 
     # model, and put to device
     model = Classifier(num_classes=len(training_dataset.classes))
+    model = model.to(flags.device)
 
     # optimizer and lr scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
