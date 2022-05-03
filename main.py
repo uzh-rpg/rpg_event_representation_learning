@@ -112,6 +112,32 @@ if __name__ == '__main__':
     min_validation_loss = np.inf
 
     for i in range(flags.num_epochs):
+        ######### Training #########
+        sum_accuracy = 0
+        sum_loss = 0
+
+        model = model.train()
+        print(f"Training step [{i:3d}/{flags.num_epochs:3d}]")
+        for events, labels in tqdm.tqdm(training_loader):
+            optimizer.zero_grad()
+
+            pred_labels, representation = model(events)
+            loss, accuracy = cross_entropy_loss_and_accuracy(
+                pred_labels, labels)
+
+            loss.backward()
+
+            optimizer.step()
+
+            sum_accuracy += accuracy.detach()
+            sum_loss += loss.detach()
+
+            iteration += 1
+
+            del events, labels, pred_labels, loss, accuracy
+            torch.cuda.empty_cache()  
+            
+        
         ######### Validation #########
         sum_accuracy = 0
         sum_loss = 0
@@ -162,7 +188,6 @@ if __name__ == '__main__':
             }, os.path.join(flags.log_dir, "checkpoint_%05d_%.4f.pth" % (iteration, min_validation_loss)))
 
 
-
         ######### Testing #########
         sum_accuracy = 0
         sum_loss = 0
@@ -192,31 +217,6 @@ if __name__ == '__main__':
         writer.add_image("testing/representation", representation_vizualization, iteration)
 
         print(f"Testing Loss {testing_loss:.4f}  Accuracy {testing_accuracy:.4f}")
-
-
-        ######### Training #########
-        sum_accuracy = 0
-        sum_loss = 0
-
-        model = model.train()
-        print(f"Training step [{i:3d}/{flags.num_epochs:3d}]")
-        for events, labels in tqdm.tqdm(training_loader):
-            optimizer.zero_grad()
-
-            pred_labels, representation = model(events)
-            loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
-
-            loss.backward()
-
-            optimizer.step()
-
-            sum_accuracy += accuracy.detach()
-            sum_loss += loss.detach()
-
-            iteration += 1
-
-            del events, labels, pred_labels, loss, accuracy
-            torch.cuda.empty_cache()
 
         if i % 10 == 9:
             lr_scheduler.step()
