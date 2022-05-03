@@ -83,6 +83,11 @@ def create_image(representation):
 if __name__ == '__main__':
     flags = FLAGS()
 
+    import random
+    random.seed(0)
+    torch.manual_seed(0)
+    np.random.seed(0)
+
     # datasets, add augmentation to training set
     training_dataset = NCaltech101(flags.training_dataset, augmentation=True)
     validation_dataset = NCaltech101(flags.validation_dataset, classes=training_dataset.classes)
