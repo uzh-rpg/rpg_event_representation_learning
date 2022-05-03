@@ -135,8 +135,22 @@ if __name__ == '__main__':
             iteration += 1
 
             del events, labels, pred_labels, loss, accuracy
-            torch.cuda.empty_cache()  
+            torch.cuda.empty_cache()
             
+        if i % 10 == 9:
+            lr_scheduler.step()
+
+        training_loss = sum_loss.item() / len(training_loader)
+        training_accuracy = sum_accuracy.item() / len(training_loader)
+        print(f"Training Iteration {iteration:5d}  Loss {training_loss:.4f}  Accuracy {training_accuracy:.4f}")
+
+        writer.add_scalar("training/accuracy", training_accuracy, iteration)
+        writer.add_scalar("training/loss", training_loss, iteration)
+
+        representation_vizualization = create_image(representation)
+        writer.add_image("training/representation",
+                         representation_vizualization, iteration)
+
         
         ######### Validation #########
         sum_accuracy = 0
@@ -217,17 +231,4 @@ if __name__ == '__main__':
         writer.add_image("testing/representation", representation_vizualization, iteration)
 
         print(f"Testing Loss {testing_loss:.4f}  Accuracy {testing_accuracy:.4f}")
-
-        if i % 10 == 9:
-            lr_scheduler.step()
-
-        training_loss = sum_loss.item() / len(training_loader)
-        training_accuracy = sum_accuracy.item() / len(training_loader)
-        print(f"Training Iteration {iteration:5d}  Loss {training_loss:.4f}  Accuracy {training_accuracy:.4f}")
-
-        writer.add_scalar("training/accuracy", training_accuracy, iteration)
-        writer.add_scalar("training/loss", training_loss, iteration)
-
-        representation_vizualization = create_image(representation)
-        writer.add_image("training/representation", representation_vizualization, iteration)
         writer.flush()
