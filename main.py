@@ -124,8 +124,11 @@ if __name__ == '__main__':
                 pred_labels, representation = model(events)
                 loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
 
-            sum_accuracy += accuracy
-            sum_loss += loss
+            sum_accuracy += accuracy.detach()
+            sum_loss += loss.detach()
+
+            del events, labels, pred_labels, loss, accuracy
+            torch.cuda.empty_cache()
 
         validation_loss = sum_loss.item() / len(validation_loader)
         validation_accuracy = sum_accuracy.item() / len(validation_loader)
@@ -172,8 +175,11 @@ if __name__ == '__main__':
                 pred_labels, representation = model(events)
                 loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
 
-            sum_accuracy += accuracy
-            sum_loss += loss
+            sum_accuracy += accuracy.detach()
+            sum_loss += loss.detach()
+
+            del events, labels, pred_labels, loss, accuracy
+            torch.cuda.empty_cache()
 
         testing_loss = sum_loss.item() / len(testing_loader)
         testing_accuracy = sum_accuracy.item() / len(testing_loader)
@@ -204,10 +210,13 @@ if __name__ == '__main__':
 
             optimizer.step()
 
-            sum_accuracy += accuracy
-            sum_loss += loss
+            sum_accuracy += accuracy.detach()
+            sum_loss += loss.detach()
 
             iteration += 1
+
+            del events, labels, pred_labels, loss, accuracy
+            torch.cuda.empty_cache()
 
         if i % 10 == 9:
             lr_scheduler.step()
