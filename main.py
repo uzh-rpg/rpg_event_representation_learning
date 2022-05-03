@@ -121,7 +121,7 @@ if __name__ == '__main__':
         for events, labels in tqdm.tqdm(validation_loader):
 
             with torch.no_grad():
-                pred_labels, representation = model(events)
+                pred_labels, representation = model(events, test=True)
                 loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
 
             sum_accuracy += accuracy.detach()
@@ -172,7 +172,7 @@ if __name__ == '__main__':
         for events, labels in tqdm.tqdm(testing_loader):
 
             with torch.no_grad():
-                pred_labels, representation = model(events)
+                pred_labels, representation = model(events, test=True)
                 loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
 
             sum_accuracy += accuracy.detach()

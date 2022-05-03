@@ -23,12 +23,14 @@ class Loader:
 
 
 def collate_events(data):
+    max_events = np.max([len(ev) for (ev, _) in data])
     labels = []
-    events = []
-    for i, d in enumerate(data):
-        labels.append(d[1])
-        ev = np.concatenate([d[0], i*np.ones((len(d[0]),1), dtype=np.float32)],1)
-        events.append(ev)
-    events = torch.from_numpy(np.concatenate(events,0))
+    events = np.zeros((len(data), max_events, 5), dtype=np.float32)
+    events[...,-1] = -1
+    for i, (d, label) in enumerate(data):
+        labels.append(label)
+        ev = np.concatenate([d, i*np.ones((len(d),1), dtype=np.float32)],1)
+        events[i, :d.shape[0], :] = ev
+    events = torch.from_numpy(events)
     labels = default_collate(labels)
     return events, labels

@@ -89,36 +89,81 @@ class QuantizationLayer(nn.Module):
                                       num_channels=dim[0])
         self.dim = dim
 
-    def forward(self, events):
+    def forward(self, events, test=False):
+        if test:
+            events = events.reshape([-1, 5])
+            events = events[events[..., -1] != -1]
+
+            # points is a list, since events can have any size
+            B = events[:, -1].unique().cpu().numpy().astype(int)
+            num_voxels = int(2 * np.prod(self.dim) * len(B))
+            vox = torch.full([num_voxels, ], fill_value=0,
+                            dtype=events.dtype, device=events.device)
+            C, H, W = self.dim
+
+            # get values for each channel
+            x, y, t, p, b = events.t()
+
+            # normalizing timestamps
+            for bi in B:
+                t[events[:, -1] == bi] /= t[events[:, -1] == bi].max()
+
+            p = (p+1)/2  # maps polarity to 0, 1
+
+            idx_before_bins = x \
+                + W * y \
+                + 0 \
+                + W * H * C * p \
+                + W * H * C * 2 * b
+
+            for i_bin in range(C):
+                values = t * self.value_layer.forward(t-i_bin/(C-1))
+
+                # draw in voxel grid
+                idx = idx_before_bins + W * H * i_bin
+                vox.put_(idx.long(), values, accumulate=True)
+
+            vox = vox.view(-1, 2, C, H, W)
+            vox = torch.cat([vox[:, 0, ...], vox[:, 1, ...]], 1)
+
+            return vox
+
+
+        events = events.reshape([-1, 5])
+        events = events[events[..., -1] != -1]
+        events[:, -1] -= events[:, -1].min()
+
         # points is a list, since events can have any size
         B = events[:,-1].unique().cpu().numpy().astype(int)
-        num_voxels = int(2 * np.prod(self.dim) * len(B))
-        vox = torch.full([num_voxels,], fill_value=0, dtype=events.dtype, device=events.device)
         C, H, W = self.dim
+        vox = torch.full([len(B), 2, C, H, W], fill_value=0, dtype=torch.float32, device=events.device)
 
         # get values for each channel
         x, y, t, p, b = events.t()
 
         # normalizing timestamps
         for bi in B:
-            t[events[:,-1] == bi] /= t[events[:,-1] == bi].max()
+            t[b == bi] /= t[b == bi].max()
 
         p = (p+1)/2  # maps polarity to 0, 1
 
-        idx_before_bins = x \
-                          + W * y \
-                          + 0 \
-                          + W * H * C * p \
-                          + W * H * C * 2 * b
+        x = x.long()
+        y = y.long()
+        p = p.long()
+        b = b.long()
+
+        times = t.unique()
 
         for i_bin in range(C):
-            values = t * self.value_layer.forward(t-i_bin/(C-1))
+            values = times * self.value_layer.forward(times-i_bin/(C-1))
+
+            indices = (times[None, :] == t[:, None]).int().argmax(axis=1)
+            values_all = values[indices]
 
             # draw in voxel grid
-            idx = idx_before_bins + W * H * i_bin
-            vox.put_(idx.long(), values, accumulate=True)
+            bin = i_bin * torch.ones_like(x, dtype=torch.long).to(vox.device)
+            vox.index_put_((b, p, bin, y, x), values_all, accumulate=True)
 
-        vox = vox.view(-1, 2, C, H, W)
         vox = torch.cat([vox[:, 0, ...], vox[:, 1, ...]], 1)
 
         return vox
@@ -135,6 +180,7 @@ class Classifier(nn.Module):
 
         nn.Module.__init__(self)
         self.quantization_layer = QuantizationLayer(voxel_dimension, mlp_layers, activation)
+        self.quantization_layer_parallel = nn.DataParallel(self.quantization_layer)
         self.classifier = resnet34(pretrained=pretrained)
 
         self.crop_dimension = crop_dimension
@@ -157,8 +203,11 @@ class Classifier(nn.Module):
 
         return x
 
-    def forward(self, x):
-        vox = self.quantization_layer.forward(x)
+    def forward(self, x, test=False):
+        if test:
+            vox = self.quantization_layer.forward(x, test)
+        else:
+            vox = self.quantization_layer_parallel.forward(x)
         vox_cropped = self.crop_and_resize_to_resolution(vox, self.crop_dimension)
         pred = self.classifier.forward(vox_cropped)
         return pred, vox

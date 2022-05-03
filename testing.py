@@ -59,7 +59,7 @@ if __name__ == '__main__':
     print("Test step")
     for events, labels in tqdm.tqdm(test_loader):
         with torch.no_grad():
-            pred_labels, _ = model(events)
+            pred_labels, _ = model(events, test=True)
             loss, accuracy = cross_entropy_loss_and_accuracy(pred_labels, labels)
 
         sum_accuracy += accuracy
