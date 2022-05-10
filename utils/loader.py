@@ -28,6 +28,8 @@ def collate_events(data):
     events = np.zeros((len(data), max_events, 5), dtype=np.float32)
     events[...,-1] = -1
     for i, (d, label) in enumerate(data):
+        if d.size == 0:
+            continue
         labels.append(label)
         ev = np.concatenate([d, i*np.ones((len(d),1), dtype=np.float32)],1)
         events[i, :d.shape[0], :] = ev

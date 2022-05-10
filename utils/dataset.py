@@ -3,7 +3,9 @@ from os import listdir
 from os.path import join
 
 
-def random_shift_events(events, max_shift=20, resolution=(180, 240)):
+def random_shift_events(input_events, max_shift=20, min_keep_factor=0.25, resolution=(180, 240)):
+    events = input_events.copy()
+
     H, W = resolution
     x_shift, y_shift = np.random.randint(-max_shift, max_shift+1, size=(2,))
     events[:,0] += x_shift
@@ -12,7 +14,10 @@ def random_shift_events(events, max_shift=20, resolution=(180, 240)):
     valid_events = (events[:,0] >= 0) & (events[:,0] < W) & (events[:,1] >= 0) & (events[:,1] < H)
     events = events[valid_events]
 
-    return events
+    if valid_events.sum() < valid_events.size * min_keep_factor:
+        return input_events
+    else:
+        return events
 
 def random_flip_events_along_x(events, resolution=(180, 240), p=0.5):
     H, W = resolution

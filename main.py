@@ -106,6 +106,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.5)
 
+    os.makedirs(flags.log_dir, exist_ok=True)
     writer = SummaryWriter(flags.log_dir)
 
     iteration = 0
@@ -119,6 +120,9 @@ if __name__ == '__main__':
         model = model.train()
         print(f"Training step [{i:3d}/{flags.num_epochs:3d}]")
         for events, labels in tqdm.tqdm(training_loader):
+            if events.size == 0:
+                continue
+
             optimizer.zero_grad()
 
             pred_labels, representation = model(events)
@@ -159,6 +163,8 @@ if __name__ == '__main__':
 
         print(f"Validation step [{i:3d}/{flags.num_epochs:3d}]")
         for events, labels in tqdm.tqdm(validation_loader):
+            if events.size == 0:
+                continue
 
             with torch.no_grad():
                 pred_labels, representation = model(events, test=True)
@@ -209,6 +215,8 @@ if __name__ == '__main__':
 
         print(f"Testing step [{i:3d}/{flags.num_epochs:3d}]")
         for events, labels in tqdm.tqdm(testing_loader):
+            if events.size == 0:
+                continue
 
             with torch.no_grad():
                 pred_labels, representation = model(events, test=True)
