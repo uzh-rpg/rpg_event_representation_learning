@@ -105,8 +105,9 @@ class QuantizationLayer(nn.Module):
             x, y, t, p, b = events.t()
 
             # normalizing timestamps
-            for bi in B:
+            for i, bi in enumerate(B):
                 t[events[:, -1] == bi] /= t[events[:, -1] == bi].max()
+                b[b == bi] = i
 
             p = (p+1)/2  # maps polarity to 0, 1
 
@@ -142,8 +143,9 @@ class QuantizationLayer(nn.Module):
         x, y, t, p, b = events.t()
 
         # normalizing timestamps
-        for bi in B:
+        for i, bi in enumerate(B):
             t[b == bi] /= t[b == bi].max()
+            b[b == bi] = i
 
         p = (p+1)/2  # maps polarity to 0, 1
 
