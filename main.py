@@ -33,12 +33,14 @@ def FLAGS():
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--pin_memory", type=bool, default=True)
     parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--lr", type=float, default=1e-4)
 
     parser.add_argument("--num_epochs", type=int, default=30)
     parser.add_argument("--save_every_n_epochs", type=int, default=5)
 
     flags = parser.parse_args()
 
+    os.makedirs(flags.log_dir, exist_ok=True)
     assert os.path.isdir(dirname(flags.log_dir)), f"Log directory root {dirname(flags.log_dir)} not found."
     assert os.path.isdir(flags.validation_dataset), f"Validation dataset directory {flags.validation_dataset} not found."
     assert os.path.isdir(flags.training_dataset), f"Training dataset directory {flags.training_dataset} not found."
@@ -48,6 +50,7 @@ def FLAGS():
           f"Starting training with \n"
           f"num_epochs: {flags.num_epochs}\n"
           f"batch_size: {flags.batch_size}\n"
+          f"lr: {flags.lr}\n"
           f"device: {flags.device}\n"
           f"log_dir: {flags.log_dir}\n"
           f"training_dataset: {flags.training_dataset}\n"
@@ -103,7 +106,7 @@ if __name__ == '__main__':
     model = model.to(flags.device)
 
     # optimizer and lr scheduler
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=flags.lr)
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.5)
 
     os.makedirs(flags.log_dir, exist_ok=True)
@@ -139,7 +142,6 @@ if __name__ == '__main__':
             iteration += 1
 
             del events, labels, pred_labels, loss, accuracy
-            torch.cuda.empty_cache()
             
         if i % 10 == 9:
             lr_scheduler.step()
@@ -174,7 +176,6 @@ if __name__ == '__main__':
             sum_loss += loss.detach()
 
             del events, labels, pred_labels, loss, accuracy
-            torch.cuda.empty_cache()
 
         validation_loss = sum_loss.item() / len(validation_loader)
         validation_accuracy = sum_accuracy.item() / len(validation_loader)
@@ -226,7 +227,6 @@ if __name__ == '__main__':
             sum_loss += loss.detach()
 
             del events, labels, pred_labels, loss, accuracy
-            torch.cuda.empty_cache()
 
         testing_loss = sum_loss.item() / len(testing_loader)
         testing_accuracy = sum_accuracy.item() / len(testing_loader)

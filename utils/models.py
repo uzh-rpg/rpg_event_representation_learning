@@ -182,7 +182,6 @@ class Classifier(nn.Module):
 
         nn.Module.__init__(self)
         self.quantization_layer = QuantizationLayer(voxel_dimension, mlp_layers, activation)
-        self.quantization_layer_parallel = nn.DataParallel(self.quantization_layer)
         self.classifier = resnet34(pretrained=pretrained)
 
         self.crop_dimension = crop_dimension
@@ -207,9 +206,9 @@ class Classifier(nn.Module):
 
     def forward(self, x, test=False):
         if test:
-            vox = self.quantization_layer.forward(x, test)
+            vox = self.quantization_layer.forward(x, True)
         else:
-            vox = self.quantization_layer_parallel.forward(x)
+            vox = self.quantization_layer.forward(x, True)
         vox_cropped = self.crop_and_resize_to_resolution(vox, self.crop_dimension)
         pred = self.classifier.forward(vox_cropped)
         return pred, vox

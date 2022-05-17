@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     # model, load and put to device
     model = Classifier()
-    ckpt = torch.load(flags.checkpoint)
+    ckpt = torch.load(flags.checkpoint, map_location=flags.device)
     model.load_state_dict(ckpt["state_dict"])
     model = model.to(flags.device)
 
