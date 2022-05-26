@@ -158,8 +158,7 @@ class QuantizationLayer(nn.Module):
 
         for i_bin in range(C):
             values = times * self.value_layer.forward(times-i_bin/(C-1))
-
-            indices = (times[None, :] == t[:, None]).int().argmax(axis=1)
+            indices = (times[None, :] == t[:, None]).nonzero()[:,1]
             values_all = values[indices]
 
             # draw in voxel grid
@@ -205,10 +204,7 @@ class Classifier(nn.Module):
         return x
 
     def forward(self, x, test=False):
-        if test:
-            vox = self.quantization_layer.forward(x, True)
-        else:
-            vox = self.quantization_layer.forward(x, True)
+        vox = self.quantization_layer.forward(x, True)
         vox_cropped = self.crop_and_resize_to_resolution(vox, self.crop_dimension)
         pred = self.classifier.forward(vox_cropped)
         return pred, vox

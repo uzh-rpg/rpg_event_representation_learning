@@ -37,6 +37,8 @@ def FLAGS():
 
     parser.add_argument("--num_epochs", type=int, default=30)
     parser.add_argument("--save_every_n_epochs", type=int, default=5)
+    
+    parser.add_argument("--continue_from", default=None)
 
     flags = parser.parse_args()
 
@@ -103,6 +105,21 @@ if __name__ == '__main__':
 
     # model, and put to device
     model = Classifier(num_classes=len(training_dataset.classes))
+    
+    if flags.continue_from is not None:
+        assert os.path.exists(flags.continue_from), f"Checkpoint {flags.continue_from} not found"
+        
+        ckpt = torch.load(flags.continue_from, map_location=flags.device)
+        model.load_state_dict(ckpt['state_dict'])
+        iteration = ckpt['iteration']
+        min_validation_loss = ckpt['min_val_loss']
+        start_epoch = round(iteration / len(training_loader))
+
+    else:
+        iteration = 0
+        min_validation_loss = np.inf
+        start_epoch = 0
+    
     model = model.to(flags.device)
 
     # optimizer and lr scheduler
@@ -112,10 +129,11 @@ if __name__ == '__main__':
     os.makedirs(flags.log_dir, exist_ok=True)
     writer = SummaryWriter(flags.log_dir)
 
-    iteration = 0
-    min_validation_loss = np.inf
 
     for i in range(flags.num_epochs):
+        if i < start_epoch:
+            continue
+
         ######### Training #########
         sum_accuracy = 0
         sum_loss = 0
@@ -142,7 +160,7 @@ if __name__ == '__main__':
             iteration += 1
 
             del events, labels, pred_labels, loss, accuracy
-            
+
         if i % 10 == 9:
             lr_scheduler.step()
 
